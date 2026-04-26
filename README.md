@@ -1,11 +1,11 @@
-# SuperCFO
-Enhancing the CFO! This is more of a personal project that is separate from Toontown Super where I want to dip into some new territory and try and make the CFO feel more chaotic, and just see how far I get with making the fight more entertaining for me and maybe you!
+# Toontown: Dearchipelagoified
+A project aimed to remove Archipelago features from TTAP/TTCL, for developing your own projects using the source without leftovers from other projects.
 
 This source is built on the foundation of Toontown Offline's Toontown School House's source code.
 Toontown School House is a course dedicated to teaching members of the Toontown community how to develop for the game. For more information, head over to [this](https://www.reddit.com/r/Toontown/comments/doszgg/toontown_school_house_learn_to_develop_for/) Reddit post.
 
 
-This version of toontown makes modifications to the base game to introduce 
+This version of Toontown makes modifications to the base game to introduce 
 gameplay tweaks to make the experience quicker, more satisfying, and more solo friendly. This game also has support for hosting
 and joining mini-servers if you still wish to play with friends! 
 
@@ -44,7 +44,7 @@ Please download the latest engine build from [here.](https://github.com/toontown
 
 ### Other
 
-At this time SuperCFO only supports Windows.
+At this time Toontown: Dearchipelagoified only supports Windows.
 To run on other platforms you will need to build the engine. 
 This is an advanced use-case and is unsupported.
 To get started, please see the build instructions [here.](https://github.com/toontown-archipelago/panda3d)
@@ -92,7 +92,7 @@ anything in the game with no restrictions.
 
 ### I was playing and my game crashed :(
 
-SuperCFO is currently in an early alpha build so many issues are expected to be present. If you found a
+Toontown: Dearchipelagoified is currently in an early alpha build so many issues are expected to be present. If you found a
 crash/bug, feel free to create an Issue on the GitHub page for the repository. Developers/contributors
 use this as a "todo list". If you choose to do this, try and be as descriptive as possible on what caused the crash, and 
 any sort of possible steps that can be taken to reproduce it.
