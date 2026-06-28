@@ -602,10 +602,12 @@ class Place(StateData.StateData, FriendsListManager.FriendsListManager):
 
     def __tunnelInMovieDone(self):
         self.ignore('tunnelInMovieDone')
-        self.fsm.request('walk')
+        if hasattr(self, 'fsm'):
+            self.fsm.request('walk')
 
     def exitTunnelIn(self):
-        pass
+        taskMgr.remove('retryTunnelIn')
+        self.ignore('tunnelInMovieDone')
 
     def enterTunnelOut(self, requestStatus):
         hoodId = requestStatus['hoodId']
