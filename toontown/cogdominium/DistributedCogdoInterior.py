@@ -641,8 +641,12 @@ class DistributedCogdoInterior(DistributedObject.DistributedObject):
     def enterBattle(self, ts = 0):
         if self._wantBarrelRoom and self.elevatorOutOpen == 1:
             self.__playCloseElevatorOut(self.uniqueName('close-out-elevator'), delay=2)
-            camera.setPos(0, -15, 6)
-            camera.headsUp(self.elevatorModelOut)
+            tempNode = render.attachNewNode('tempBattle')
+            tempNode.setPos(0, -15, 6)
+            tempNode.headsUp(self.elevatorModelOut)
+            targetHpr = tempNode.getHpr()
+            tempNode.removeNode()
+            LerpPosHprInterval(camera, 0.5, Point3(0, -15, 6), targetHpr, blendType='easeInOut').start()
 
     def _showExitElevator(self):
         self.elevatorModelOut.reparentTo(self.elevOut)
@@ -650,8 +654,12 @@ class DistributedCogdoInterior(DistributedObject.DistributedObject):
         self.rightDoorOut.setPos(-3.5, 0, 0)
         if not self._wantBarrelRoom and self.elevatorOutOpen == 1:
             self.__playCloseElevatorOut(self.uniqueName('close-out-elevator'))
-            camera.setPos(0, -15, 6)
-            camera.headsUp(self.elevatorModelOut)
+            tempNode = render.attachNewNode('tempBattle')
+            tempNode.setPos(0, -15, 6)
+            tempNode.headsUp(self.elevatorModelOut)
+            targetHpr = tempNode.getHpr()
+            tempNode.removeNode()
+            LerpPosHprInterval(camera, 0.5, Point3(0, -15, 6), targetHpr, blendType='easeInOut').start()
         return None
 
     def exitBattle(self):
@@ -779,7 +787,12 @@ class DistributedCogdoInterior(DistributedObject.DistributedObject):
             speech = TTLocalizer.CogdoExecutiveSuiteToonThankYouLawbot
         else:
             speech = TTLocalizer.CogdoExecutiveSuiteToonThankYou % self.SOSToonName
-        track.append(Sequence(Func(camera.wrtReparentTo, localAvatar), Func(camera.setPos, 0, -9, 9), Func(camera.lookAt, Point3(5, 15, 0)), Parallel(self.cage.posInterval(0.75, self.cagePos[1], blendType='easeOut'), SoundInterval(self.cageLowerSfx, duration=0.5)), Parallel(self.cageDoor.hprInterval(0.5, VBase3(0, 90, 0), blendType='easeOut'), Sequence(SoundInterval(self.cageDoorSfx), duration=0)), Wait(0.25), Func(self.shopOwnerNpc.wrtReparentTo, render), Func(self.shopOwnerNpc.setScale, 1), Func(self.shopOwnerNpc.loop, 'walk'), Func(self.shopOwnerNpc.headsUp, Point3(0, 10, 0)), ParallelEndTogether(self.shopOwnerNpc.posInterval(1.5, Point3(0, 10, 0)), self.shopOwnerNpc.hprInterval(0.5, VBase3(180, 0, 0), blendType='easeInOut')), Func(self.shopOwnerNpc.setChatAbsolute, TTLocalizer.CagedToonYippee, CFSpeech), ActorInterval(self.shopOwnerNpc, 'jump'), Func(self.shopOwnerNpc.loop, 'neutral'), Func(self.shopOwnerNpc.headsUp, localAvatar), Func(self.shopOwnerNpc.setLocalPageChat, speech, 0), Func(camera.lookAt, self.shopOwnerNpc, Point3(0, 0, 2))))
+        tempNode = localAvatar.attachNewNode('tempOutro')
+        tempNode.setPos(0, -9, 9)
+        tempNode.lookAt(Point3(5, 15, 0))
+        targetHpr = tempNode.getHpr()
+        tempNode.removeNode()
+        track.append(Sequence(Func(camera.wrtReparentTo, localAvatar), LerpPosHprInterval(camera, 0.75, Point3(0, -9, 9), targetHpr, other=localAvatar, blendType='easeInOut'), Parallel(self.cage.posInterval(0.75, self.cagePos[1], blendType='easeOut'), SoundInterval(self.cageLowerSfx, duration=0.5)), Parallel(self.cageDoor.hprInterval(0.5, VBase3(0, 90, 0), blendType='easeOut'), Sequence(SoundInterval(self.cageDoorSfx), duration=0)), Wait(0.25), Func(self.shopOwnerNpc.wrtReparentTo, render), Func(self.shopOwnerNpc.setScale, 1), Func(self.shopOwnerNpc.loop, 'walk'), Func(self.shopOwnerNpc.headsUp, Point3(0, 10, 0)), ParallelEndTogether(self.shopOwnerNpc.posInterval(1.5, Point3(0, 10, 0)), self.shopOwnerNpc.hprInterval(0.5, VBase3(180, 0, 0), blendType='easeInOut')), Func(self.shopOwnerNpc.setChatAbsolute, TTLocalizer.CagedToonYippee, CFSpeech), ActorInterval(self.shopOwnerNpc, 'jump'), Func(self.shopOwnerNpc.loop, 'neutral'), Func(self.shopOwnerNpc.headsUp, localAvatar), Func(self.shopOwnerNpc.setLocalPageChat, speech, 0), Func(camera.lookAt, self.shopOwnerNpc, Point3(0, 0, 2))))
         self.activeIntervals[trackName] = track
         self.accept('doneChatPage', self.__outroPenthouseChatDone)
         return track

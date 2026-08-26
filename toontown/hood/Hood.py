@@ -217,6 +217,17 @@ class Hood(StateData.StateData):
             messenger.send(self.doneEvent)
 
     def startSky(self):
+        self.sky.setShaderOff(1)
+        self.sky.setLightOff(101)
+        try:
+            from toontown.hood import OutdoorLighting
+            wantProcedural = OutdoorLighting._wantProceduralSky()
+        except Exception:
+            wantProcedural = False
+        if wantProcedural:
+            self.sky.hide(BitMask32.allOn())
+        else:
+            self.sky.show(BitMask32.allOn())
         self.sky.reparentTo(camera)
         self.sky.setZ(0.0)
         self.sky.setHpr(0.0, 0.0, 0.0)
@@ -235,6 +246,17 @@ class Hood(StateData.StateData):
         self.sky = loader.loadModel(self.spookySkyFile)
         self.sky.setTag('sky', 'Halloween')
         self.sky.setColor(0.5, 0.5, 0.5, 1)
+        self.sky.setShaderOff(1)
+        self.sky.setLightOff(101)
+        try:
+            from toontown.hood import OutdoorLighting
+            wantProcedural = OutdoorLighting._wantProceduralSky()
+        except Exception:
+            wantProcedural = False
+        if wantProcedural:
+            self.sky.hide(BitMask32.allOn())
+        else:
+            self.sky.show(BitMask32.allOn())
         self.sky.reparentTo(camera)
         self.sky.setTransparency(TransparencyAttrib.MDual, 1)
         fadeIn = self.sky.colorScaleInterval(1.5, Vec4(1, 1, 1, 1), startColorScale=Vec4(1, 1, 1, 0.25), blendType='easeInOut')

@@ -77,6 +77,12 @@ class DistributedMint(DistributedObject.DistributedObject):
                 self.allRooms.append(hallway)
                 self.listenForFloorEvents(hallway)
 
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.shadeExtraSubtree(self.geom)
+        except Exception:
+            pass
+
         def handleCameraRayFloorCollision(collEntry, self = self):
             name = collEntry.getIntoNode().getName()
             self.notify.debug('camera floor ray collided with: %s' % name)
@@ -178,6 +184,11 @@ class DistributedMint(DistributedObject.DistributedObject):
 
     def disable(self):
         self.notify.debug('disable')
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.clearExtraSubtree(getattr(self, 'geom', None))
+        except Exception:
+            pass
         self.ignoreAll()
         for hallway in self.hallways:
             hallway.exit()

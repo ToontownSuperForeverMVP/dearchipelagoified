@@ -112,8 +112,19 @@ class LawbotCogHQLoader(CogHQLoader.CogHQLoader):
         self.placeClass = StageInterior.StageInterior
         self.stageId = requestStatus['stageId']
         self.enterPlace(requestStatus)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(render, style='lawbot_office',
+                                 zoneId=ToontownGlobals.LawbotOfficeInt)
+        except Exception as error:
+            self.notify.warning('Unable to start DA Office lighting: %s' % error)
 
     def exitStageInterior(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(render)
+        except Exception:
+            pass
         self.exitPlace()
         self.placeClass = None
         return
@@ -127,11 +138,23 @@ class LawbotCogHQLoader(CogHQLoader.CogHQLoader):
         return LawbotHQBossBattle.LawbotHQBossBattle
 
     def enterFactoryExterior(self, requestStatus):
+        try:
+            from toontown.hood import OutdoorLighting, ZoneUtil
+            zoneId = ZoneUtil.getCanonicalZoneId(requestStatus.get('zoneId'))
+            OutdoorLighting.begin(getattr(self, 'geom', None),
+                                 style='lawbot_office', zoneId=zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start DA lobby lighting: %s' % error)
         self.placeClass = LawbotOfficeExterior.LawbotOfficeExterior
         self.enterPlace(requestStatus)
         self.hood.spawnTitleText(requestStatus['zoneId'])
 
     def exitFactoryExterior(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(getattr(self, 'geom', None))
+        except Exception:
+            pass
         taskMgr.remove('titleText')
         self.hood.hideTitleText()
         self.exitPlace()

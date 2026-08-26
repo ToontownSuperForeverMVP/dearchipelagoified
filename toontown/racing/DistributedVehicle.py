@@ -684,8 +684,8 @@ class DistributedVehicle(DistributedSmoothNode.DistributedSmoothNode, Kart.Kart,
         startFov = base.camLens.getMinFov()
         if self.cameraTrack:
             self.cameraTrack.pause()
-        cameraZoomIn = Parallel(LerpPosInterval(camera, 2, newCameraPos), LerpFunc(base.camLens.setMinFov, fromData=startFov, toData=newCameraFov / (4. / 3.), duration=2))
-        cameraToNormal = Parallel(LerpPosInterval(camera, 1, Point3(0, -33, 16), newCameraPos), LerpFunc(base.camLens.setMinFov, fromData=newCameraFov / (4. / 3.), toData=ToontownGlobals.DefaultCameraFov / (4. / 3.), duration=1))
+        cameraZoomIn = Parallel(LerpPosInterval(camera, 2, newCameraPos, blendType='easeInOut'), LerpFunc(base.camLens.setMinFov, fromData=startFov, toData=newCameraFov / (4. / 3.), duration=2, blendType='easeInOut'))
+        cameraToNormal = Parallel(LerpPosInterval(camera, 1, Point3(0, -33, 16), newCameraPos, blendType='easeInOut'), LerpFunc(base.camLens.setMinFov, fromData=newCameraFov / (4. / 3.), toData=ToontownGlobals.DefaultCameraFov / (4. / 3.), duration=1, blendType='easeInOut'))
         self.cameraTrack = Sequence(Func(self.turboStartSfx.play), cameraZoomIn, Func(lambda : self.setTurbo(True)), Wait(turboDuration), Func(self.__stopTurbo), cameraToNormal)
         self.cameraTrack.start()
 
@@ -1101,7 +1101,7 @@ class DistributedVehicle(DistributedSmoothNode.DistributedSmoothNode, Kart.Kart,
         self.imHitMult = level
         if hasattr(self, 'cameraTrack') and self.cameraTrack:
             self.cameraTrack.pause()
-            cameraToNormal = Parallel(LerpPosInterval(camera, 0.05, Point3(0, -33, 16), startPos=camera.getPos()), LerpFunc(base.camLens.setMinFov, fromData=base.camLens.getMinFov(), toData=ToontownGlobals.DefaultCameraFov / (4. / 3.), duration=0.05))
+            cameraToNormal = Parallel(LerpPosInterval(camera, 0.05, Point3(0, -33, 16), startPos=camera.getPos(), blendType='easeInOut'), LerpFunc(base.camLens.setMinFov, fromData=base.camLens.getMinFov(), toData=ToontownGlobals.DefaultCameraFov / (4. / 3.), duration=0.05, blendType='easeInOut'))
             cameraToNormal.start()
         self.__stopTurbo()
         self.stopped = True

@@ -119,7 +119,7 @@ class DistributedPhone(DistributedFurnitureItem.DistributedFurnitureItem):
             quat = Quat()
             quat.setHpr((35, -8, 0))
             self.cameraLerp = LerpPosQuatInterval(camera, 1, (4, -4, base.localAvatar.getHeight() - 0.5), quat,
-                                                  blendType='easeOut', other=base.localAvatar,
+                                                  blendType='easeInOut', other=base.localAvatar,
                                                   name=self.uniqueName('lerpCamera'))
             self.cameraLerp.start()
 

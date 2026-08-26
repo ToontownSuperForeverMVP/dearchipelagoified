@@ -110,20 +110,48 @@ class DistributedBattle(DistributedBattleBase.DistributedBattleBase):
             TauntCamY = 16
             TauntCamX = random.choice((-5, 5))
             TauntCamHeight = random.choice((MidTauntCamHeight, 1, 11))
+            tauntCamTarget = suit.attachNewNode('faceOffTauntCameraTarget')
+            tauntCamTarget.setPos(TauntCamX, TauntCamY, TauntCamHeight)
+            tauntCamTarget.lookAt(suit, suitOffsetPnt)
+            tauntCamHpr = tauntCamTarget.getHpr(suit)
+            tauntCamTarget.removeNode()
+
+            faceOffCamTarget = self.attachNewNode('faceOffWideCameraTarget')
+            faceOffCamTarget.setPos(self.camFOPos)
+            faceOffCamTarget.lookAt(suitPos)
+            faceOffCamHpr = faceOffCamTarget.getHpr(self)
+            faceOffCamTarget.removeNode()
+
+            closeTweenTime = min(0.65, delay * 0.35)
+            wideTweenTime = min(0.55, faceoffTime * 0.4)
             camTrack = Sequence()
             camTrack.append(Func(camera.wrtReparentTo, suit))
             camTrack.append(Func(base.camLens.setMinFov, self.camFOFov / (4. / 3.)))
-            camTrack.append(Func(camera.setPos, TauntCamX, TauntCamY, TauntCamHeight))
-            camTrack.append(Func(camera.lookAt, suit, suitOffsetPnt))
-            camTrack.append(Wait(delay))
+            camTrack.append(LerpPosHprInterval(
+                camera, closeTweenTime,
+                Point3(TauntCamX, TauntCamY, TauntCamHeight), tauntCamHpr,
+                other=suit, blendType='easeInOut',
+                name=self.uniqueBattleName('faceOffCloseTween')))
+            camTrack.append(Wait(max(0.0, delay - closeTweenTime)))
             camTrack.append(Func(base.camLens.setMinFov, self.camFov / (4. / 3.)))
             camTrack.append(Func(camera.wrtReparentTo, self))
-            camTrack.append(Func(camera.setPos, self.camFOPos))
-            camTrack.append(Func(camera.lookAt, suit.getPos(self)))
-            camTrack.append(Wait(faceoffTime))
+            camTrack.append(LerpPosHprInterval(
+                camera, wideTweenTime, self.camFOPos, faceOffCamHpr,
+                other=self, blendType='easeInOut',
+                name=self.uniqueBattleName('faceOffWideTween')))
+            camTrack.append(Wait(max(0.0, faceoffTime - wideTweenTime)))
             if self.interactiveProp:
-                camTrack.append(Func(camera.lookAt, self.interactiveProp.node.getPos(self)))
-                camTrack.append(Wait(FACEOFF_LOOK_AT_PROP_T))
+                propCamTarget = self.attachNewNode('faceOffPropCameraTarget')
+                propCamTarget.setPos(self.camFOPos)
+                propCamTarget.setHpr(faceOffCamHpr)
+                propCamTarget.lookAt(self.interactiveProp.node.getPos(self))
+                propCamHpr = propCamTarget.getHpr(self)
+                propCamTarget.removeNode()
+                propTweenTime = min(0.35, FACEOFF_LOOK_AT_PROP_T * 0.4)
+                camTrack.append(LerpHprInterval(
+                    camera, propTweenTime, propCamHpr, other=self,
+                    blendType='easeInOut'))
+                camTrack.append(Wait(max(0.0, FACEOFF_LOOK_AT_PROP_T - propTweenTime)))
         suitTrack.append(Wait(delay))
         toonTrack.append(Wait(delay))
         suitTrack.append(Func(suit.headsUp, self, suitPos))

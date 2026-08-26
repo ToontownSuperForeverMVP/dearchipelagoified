@@ -97,6 +97,15 @@ class SafeZoneLoader(StateData.StateData):
             np.setTag('transformIndex', repr(i))
             self.holidayPropTransforms[i] = np.getNetTransform()
 
+        # Preserve individual fixture transforms before flattenMedium merges
+        # repeated DNA streetlamp props into a single GeomNode.  The outdoor
+        # lighting system consumes this cache when it creates local night pools.
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.cacheLampFixtures(self.geom)
+        except Exception as error:
+            self.notify.warning('Unable to cache outdoor lamp fixtures: %s' % error)
+
         self.geom.flattenMedium()
         gsg = base.win.getGsg()
         if gsg:

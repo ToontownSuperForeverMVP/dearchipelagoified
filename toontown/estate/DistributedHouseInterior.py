@@ -45,6 +45,11 @@ class DistributedHouseInterior(DistributedObject.DistributedObject):
         self.setup()
 
     def disable(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(getattr(self, 'interior', None))
+        except Exception:
+            pass
         self.interior.removeNode()
         del self.interior
         DistributedObject.DistributedObject.disable(self)
@@ -57,6 +62,11 @@ class DistributedHouseInterior(DistributedObject.DistributedObject):
         dnaStore = base.cr.playGame.dnaStore
         self.interior = loader.loadModel('phase_5.5/models/estate/tt_m_ara_int_estateHouseA')
         self.interior.reparentTo(render)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(self.interior, style='estate_house')
+        except Exception:
+            pass
         doorModelName = 'door_double_round_ur'
         door = dnaStore.findNode(doorModelName)
         door_origin = self.interior.find('**/door_origin')

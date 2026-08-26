@@ -156,10 +156,9 @@ class DistributedCloset(DistributedFurnitureItem.DistributedFurnitureItem):
             self._openDoors()
             if self.customerId == base.localAvatar.doId:
                 camera.wrtReparentTo(self)
-                camera.setPosHpr(self, -7.58, -6.02, 6.9, 286.3, 336.8, 0)
                 quat = Quat()
                 quat.setHpr((286.3, 336.8, 0))
-                self.cameraLerp = LerpPosQuatInterval(camera, 1, (-7.58, -6.02, 6.9), quat, blendType='easeOut', other=self, name=self.uniqueName('lerpCamera'))
+                self.cameraLerp = LerpPosQuatInterval(camera, 1, (-7.58, -6.02, 6.9), quat, blendType='easeInOut', other=self, name=self.uniqueName('lerpCamera'))
                 self.cameraLerp.start()
             if self.av:
                 if self.avMoveTrack:

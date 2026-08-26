@@ -23,12 +23,12 @@ def letterBox(self, track, subjectNodePath, duration):
 
 
 def foo1(self, track, subjectNodePath, duration):
-    track.append(Sequence(Func(base.localAvatar.stopUpdateSmartCamera), PosHprInterval(camera, other=subjectNodePath, pos=Point3(-2, -35, 7.5), hpr=VBase3(-7, 0, 0)), LerpPosHprInterval(nodePath=camera, other=subjectNodePath, duration=duration, pos=Point3(2, -22, 7.5), hpr=VBase3(4, 0, 0), blendType='easeInOut'), PosHprInterval(camera, other=subjectNodePath, pos=Point3(0, -28, 7.5), hpr=VBase3(0, 0, 0)), Func(base.localAvatar.startUpdateSmartCamera)))
+    track.append(Sequence(Func(base.localAvatar.stopUpdateSmartCamera), Func(camera.wrtReparentTo, render), LerpPosHprInterval(nodePath=camera, other=subjectNodePath, duration=0.6, pos=Point3(-2, -35, 7.5), hpr=VBase3(-7, 0, 0), blendType='easeInOut'), LerpPosHprInterval(nodePath=camera, other=subjectNodePath, duration=duration, pos=Point3(2, -22, 7.5), hpr=VBase3(4, 0, 0), blendType='easeInOut'), Func(base.localAvatar.startUpdateSmartCamera)))
     return track
 
 
 def doorUnlock(self, track, subjectNodePath, duration):
-    track.append(Sequence(Func(base.localAvatar.stopUpdateSmartCamera), PosHprInterval(camera, other=self, pos=Point3(-2, -35, 7.5), hpr=VBase3(-7, 0, 0)), LerpPosHprInterval(nodePath=camera, other=self, duration=duration, pos=Point3(2, -22, 7.5), hpr=VBase3(4, 0, 0), blendType='easeInOut'), PosHprInterval(camera, other=self, pos=Point3(0, -28, 7.5), hpr=VBase3(0, 0, 0)), Func(base.localAvatar.startUpdateSmartCamera)))
+    track.append(Sequence(Func(base.localAvatar.stopUpdateSmartCamera), Func(camera.wrtReparentTo, render), LerpPosHprInterval(nodePath=camera, other=self, duration=0.6, pos=Point3(-2, -35, 7.5), hpr=VBase3(-7, 0, 0), blendType='easeInOut'), LerpPosHprInterval(nodePath=camera, other=self, duration=duration, pos=Point3(2, -22, 7.5), hpr=VBase3(4, 0, 0), blendType='easeInOut'), Func(base.localAvatar.startUpdateSmartCamera)))
     return track
 
 

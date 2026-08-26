@@ -18,21 +18,33 @@ class SellbotHQBossBattle(CogHQBossBattle.CogHQBossBattle):
         CogHQBossBattle.CogHQBossBattle.unload(self)
 
     def enter(self, requestStatus):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(None, style='sellbot_hq', zoneId=self.zoneId)
+        except Exception:
+            pass
         CogHQBossBattle.CogHQBossBattle.enter(self, requestStatus, DistributedSellbotBoss.OneBossCog)
         self.__setupHighSky()
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         CogHQBossBattle.CogHQBossBattle.exit(self)
         self.__cleanupHighSky()
 
     def __setupHighSky(self):
         self.loader.hood.startSky()
         sky = self.loader.hood.sky
-        sky.setH(150)
-        sky.setZ(-100)
+        if sky and not sky.isEmpty():
+            sky.setH(150)
+            sky.setZ(-100)
 
     def __cleanupHighSky(self):
         self.loader.hood.stopSky()
         sky = self.loader.hood.sky
-        sky.setH(0)
-        sky.setZ(0)
+        if sky and not sky.isEmpty():
+            sky.setH(0)
+            sky.setZ(0)

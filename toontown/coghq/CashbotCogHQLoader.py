@@ -87,8 +87,19 @@ class CashbotCogHQLoader(CogHQLoader.CogHQLoader):
         self.placeClass = MintInterior.MintInterior
         self.mintId = requestStatus['mintId']
         self.enterPlace(requestStatus)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(render, style='cashbot_mint',
+                                 zoneId=self.mintId)
+        except Exception as error:
+            self.notify.warning('Unable to start Mint interior lighting: %s' % error)
 
     def exitMintInterior(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(render)
+        except Exception:
+            pass
         self.exitPlace()
         self.placeClass = None
         del self.mintId

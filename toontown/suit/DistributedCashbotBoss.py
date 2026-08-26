@@ -434,9 +434,19 @@ class DistributedCashbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         planeNode.setCollideMask(ToontownGlobals.PieBitmask)
         self.geom.attachNewNode(planeNode)
         self.geom.reparentTo(render)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.shadeExtraSubtree(self.geom)
+        except Exception:
+            pass
 
     def unloadEnvironment(self):
         DistributedBossCog.DistributedBossCog.unloadEnvironment(self)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.clearExtraSubtree(getattr(self, 'geom', None))
+        except Exception:
+            pass
         self.geom.removeNode()
 
     def replaceCollisionPolysWithPlanes(self, model):
@@ -573,8 +583,8 @@ class DistributedCashbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                         #Cut to the CFO rolling in
                         Func(rToon.setHpr, 0, 0, 0),
                         Func(rToon.setChatAbsolute, TTL.ResistanceToonTooLate, CFSpeech),
-                        Func(camera.reparentTo, render),
-                        Func(camera.setPosHpr, 61.1, -228.8, 10.2, -90, 0, 0),
+                        Func(camera.wrtReparentTo, render),
+                        camera.posHprInterval(1.5, Point3(61.1, -228.8, 10.2), Point3(-90, 0, 0), blendType='easeInOut'),
                         
                         #Open the CFO door
                         self.door1.posInterval(2, VBase3(0, 0, 30)),
@@ -621,7 +631,7 @@ class DistributedCashbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                                     
                                     #cut back to the CFO and move the toons in to place
                                     Func(rToon.clearChat),
-                                    Func(camera.setPosHpr, 93.3, -230, 0.7, -92.9, 39.7, 8.3),
+                                    camera.posHprInterval(1.0, Point3(93.3, -230, 0.7), Point3(-92.9, 39.7, 8.3), blendType='easeInOut'),
                                     Func(self.setChatAbsolute, attackToons, CFSpeech),
                                     Wait(2),
                                     Func(self.clearChat))
@@ -709,20 +719,20 @@ class DistributedCashbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                 
             #Cut to the resistance toon... he's gonna show the players something
             Func(rToon.loop, 'leverNeutral'),
-            Func(camera.reparentTo, self.geom),
-            Func(camera.setPosHpr, 105, -326, 5, 136.3, 0, 0),
+            Func(camera.wrtReparentTo, self.geom),
+            camera.posHprInterval(1.0, Point3(105, -326, 5), Point3(136.3, 0, 0), other=self.geom, blendType='easeInOut'),
             Func(rToon.setChatAbsolute, TTL.ResistanceToonWatchThis, CFSpeech),
             Wait(2),
             Func(rToon.clearChat),
             
             #Cut to the CFO telling the RT to knock it off
-            Func(camera.setPosHpr, 105, -326, 20, -45.3, 11, 0),
+            camera.posHprInterval(1.0, Point3(105, -326, 20), Point3(-45.3, 11, 0), other=self.geom, blendType='easeInOut'),
             Func(self.setChatAbsolute, TTL.CashbotBossGetAwayFromThat, CFSpeech),
             Wait(2),
             Func(self.clearChat),
             
             #The RT is having fun... cut to him doing the safe thing
-            camera.posHprInterval(1.5, Point3(105, -326, 5), Point3(136.3, 0, 0), blendType='easeInOut'),
+            camera.posHprInterval(1.5, Point3(105, -326, 5), Point3(136.3, 0, 0), other=self.geom, blendType='easeInOut'),
             
             #tell em what to do
             Func(rToon.setChatAbsolute, TTL.ResistanceToonCraneInstructions1, CFSpeech),
@@ -736,19 +746,19 @@ class DistributedCashbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             Func(rToon.clearChat),
             
             # Cut to the recovering goon
-            Func(camera.setPosHpr, 102, -323.6, 0.9, -10.6, 14, 0),
+            camera.posHprInterval(1.0, Point3(102, -323.6, 0.9), Point3(-10.6, 14, 0), other=self.geom, blendType='easeInOut'),
             Func(goon.request, 'Recovery'),
             Wait(2),
             
             # Cut to the surprised resistance toon 
-            Func(camera.setPosHpr, 95.4, -332.6, 4.2, 167.1, -13.2, 0),
+            camera.posHprInterval(0.8, Point3(95.4, -332.6, 4.2), Point3(167.1, -13.2, 0), other=self.geom, blendType='easeInOut'),
             Func(rToon.setChatAbsolute, TTL.ResistanceToonGetaway, CFSpeech),
             Func(rToon.animFSM.request, 'jump'),
             Wait(1.8),
             Func(rToon.clearChat),
             
             #Cut to the goon chasing rtoon... close the door
-            Func(camera.setPosHpr, 109.1, -300.7, 13.9, -15.6, -13.6, 0),
+            camera.posHprInterval(1.0, Point3(109.1, -300.7, 13.9), Point3(-15.6, -13.6, 0), other=self.geom, blendType='easeInOut'),
             Func(rToon.animFSM.request, 'run'),
             Func(goon.request, 'Walk'),
             Parallel(
@@ -763,7 +773,7 @@ class DistributedCashbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             self.moveToonsToBattleThreePos(self.getInvolvedToonsNotSpectating()),
             Func(self.__showToons))
 
-        return Sequence(Func(camera.reparentTo, self), Func(camera.setPosHpr, 0, -27, 25, 0, -18, 0), track)
+        return Sequence(Func(camera.wrtReparentTo, self), LerpPosHprInterval(camera, 1.0, Point3(0, -27, 25), Point3(0, -18, 0), other=self, blendType='easeInOut'), track)
 
     def moveToonsToBattleThreePos(self, toons):
         track = Parallel()
@@ -832,8 +842,8 @@ class DistributedCashbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             (14 * g, car1.posInterval(0.5, Point3(0, -242, 0), startPos=Point3(150, -242, 0))))
         bossTrack = Track(
             (0.0, Sequence(
-                Func(camera.reparentTo, render),
-                Func(camera.setPosHpr, 105, -280, 20, -158, -3, 0),
+                Func(camera.wrtReparentTo, render),
+                LerpPosHprInterval(camera, 1.0, Point3(105, -280, 20), Point3(-158, -3, 0), blendType='easeInOut'),
                 Func(self.reparentTo, render),
                 Func(self.show),
                 Func(self.clearChat),
@@ -842,8 +852,8 @@ class DistributedCashbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                 ActorInterval(self, 'Fb_firstHit'),
                 ActorInterval(self, 'Fb_down2Up'))),
             (1.0, Func(self.setChatAbsolute, hadEnough, CFSpeech)),
+            (4.5, camera.posHprInterval(2.0, Point3(100, -315, 16), Point3(-20, 0, 0), blendType='easeInOut')),
             (5.5, Parallel(
-                Func(camera.setPosHpr, 100, -315, 16, -20, 0, 0),
                 Func(self.hideBattleThreeObjects),
                 Func(self.forwardHead),
                 Func(self.loop, 'Ff_neutral'),
@@ -1386,9 +1396,14 @@ class DistributedCashbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.resistanceToon.loop('neutral')
 
         self.__arrangeToonsAroundResistanceToon()
-        camera.reparentTo(render)
-        camera.setPos(self.resistanceToon, -9, 12, 6)
-        camera.lookAt(self.resistanceToon, 0, 0, 3)
+        camera.wrtReparentTo(render)
+        tempNode = render.attachNewNode('tempEpilogue')
+        tempNode.setPos(self.resistanceToon, -9, 12, 6)
+        tempNode.lookAt(self.resistanceToon, 0, 0, 3)
+        targetPos = tempNode.getPos(render)
+        targetHpr = tempNode.getHpr(render)
+        tempNode.removeNode()
+        LerpPosHprInterval(camera, 0.75, targetPos, targetHpr, blendType='easeInOut').start()
 
         intervalName = "EpilogueMovie"
 

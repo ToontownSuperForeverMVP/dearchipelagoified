@@ -8,6 +8,7 @@ from direct.directnotify import DirectNotifyGlobal
 import random
 from . import MovieUtil
 notify = DirectNotifyGlobal.directNotify.newCategory('MovieCamera')
+BATTLE_SHOT_TRANSITION_DURATION = 0.25
 
 def chooseHealShot(heals, attackDuration):
     isUber = 0
@@ -544,17 +545,22 @@ def makeShot(x, y, z, h, p, r, duration, other = None, name = 'makeShot'):
 
 
 def focusShot(x, y, z, duration, target, other = None, splitFocusPoint = None, name = 'focusShot'):
-    track = Sequence()
-    if other:
-        track.append(Func(camera.setPos, other, Point3(x, y, z)))
-    else:
-        track.append(Func(camera.setPos, Point3(x, y, z)))
+    parent = other if other else render
+    tempNode = parent.attachNewNode('tempFocusShot')
+    tempNode.setPos(Point3(x, y, z))
     if splitFocusPoint:
-        track.append(Func(focusCameraBetweenPoints, target, splitFocusPoint))
+        pt1 = target if isinstance(target, Point3) else target.getPos(parent)
+        pt2 = splitFocusPoint if isinstance(splitFocusPoint, Point3) else splitFocusPoint.getPos(parent)
+        midPoint = (pt1 + pt2) * 0.5
+        tempNode.lookAt(midPoint)
     else:
-        track.append(Func(camera.lookAt, target))
-    track.append(Wait(duration))
-    return track
+        tempNode.lookAt(target)
+    hpr = tempNode.getHpr()
+    tempNode.removeNode()
+    if other:
+        return heldRelativeShot(other, x, y, z, hpr[0], hpr[1], hpr[2], duration, name)
+    else:
+        return heldShot(x, y, z, hpr[0], hpr[1], hpr[2], duration, name)
 
 
 def moveShot(x, y, z, h, p, r, duration, other = None, name = 'moveShot'):
@@ -562,9 +568,12 @@ def moveShot(x, y, z, h, p, r, duration, other = None, name = 'moveShot'):
 
 
 def focusMoveShot(x, y, z, duration, target, other = None, name = 'focusMoveShot'):
-    camera.setPos(Point3(x, y, z))
-    camera.lookAt(target)
-    hpr = camera.getHpr()
+    parent = other if other else render
+    tempNode = parent.attachNewNode('tempFocusMoveShot')
+    tempNode.setPos(Point3(x, y, z))
+    tempNode.lookAt(target)
+    hpr = tempNode.getHpr()
+    tempNode.removeNode()
     return motionShot(x, y, z, hpr[0], hpr[1], hpr[2], duration, other, name)
 
 
@@ -578,50 +587,56 @@ def chooseSOSShot(av, duration):
 
 
 def chooseRewardShot(av, duration, allowGroupShot = 1):
-
-    def chooseRewardShotNow(av):
-        if av.playingAnim == 'victory' or not allowGroupShot:
-            shotChoices = [(0,
-              8,
-              av.getHeight() * 0.66,
-              179,
-              15,
-              0), (5.2,
-              5.45,
-              av.getHeight() * 0.66,
-              131.5,
-              3.6,
-              0)]
-            shot = random.choice(shotChoices)
-            camera.setPosHpr(av, *shot)
-        else:
-            camera.setPosHpr(10, 0, 10, 115, -30, 0)
-
-    return Sequence(Func(chooseRewardShotNow, av), Wait(duration))
+    if av.playingAnim == 'victory' or not allowGroupShot:
+        shotChoices = [(0,
+          8,
+          av.getHeight() * 0.66,
+          179,
+          15,
+          0), (5.2,
+          5.45,
+          av.getHeight() * 0.66,
+          131.5,
+          3.6,
+          0)]
+        shot = random.choice(shotChoices)
+        return heldRelativeShot(av, shot[0], shot[1], shot[2], shot[3], shot[4], shot[5], duration, 'rewardShot')
+    else:
+        return heldShot(10, 0, 10, 115, -30, 0, duration, 'rewardGroupShot')
 
 
 def heldShot(x, y, z, h, p, r, duration, name = 'heldShot'):
     track = Sequence(name=name)
-    track.append(Func(camera.setPosHpr, x, y, z, h, p, r))
-    track.append(Wait(duration))
+    moveDuration = min(BATTLE_SHOT_TRANSITION_DURATION, duration)
+    track.append(LerpPosHprInterval(camera, moveDuration,
+                                    pos=Point3(x, y, z),
+                                    hpr=Point3(h, p, r),
+                                    blendType='easeInOut'))
+    if duration > moveDuration:
+        track.append(Wait(duration - moveDuration))
     return track
 
 
 def heldRelativeShot(other, x, y, z, h, p, r, duration, name = 'heldRelativeShot'):
     track = Sequence(name=name)
-    track.append(Func(camera.setPosHpr, other, x, y, z, h, p, r))
-    track.append(Wait(duration))
+    moveDuration = min(BATTLE_SHOT_TRANSITION_DURATION, duration)
+    track.append(LerpPosHprInterval(camera, moveDuration,
+                                    pos=Point3(x, y, z),
+                                    hpr=Point3(h, p, r), other=other,
+                                    blendType='easeInOut'))
+    if duration > moveDuration:
+        track.append(Wait(duration - moveDuration))
     return track
 
 
 def motionShot(x, y, z, h, p, r, duration, other = None, name = 'motionShot'):
     if other:
-        posTrack = LerpPosInterval(camera, duration, pos=Point3(x, y, z), other=other)
-        hprTrack = LerpHprInterval(camera, duration, hpr=Point3(h, p, r), other=other)
+        posTrack = LerpPosInterval(camera, duration, pos=Point3(x, y, z), other=other, blendType='easeInOut')
+        hprTrack = LerpHprInterval(camera, duration, hpr=Point3(h, p, r), other=other, blendType='easeInOut')
     else:
-        posTrack = LerpPosInterval(camera, duration, pos=Point3(x, y, z))
-        hprTrack = LerpHprInterval(camera, duration, hpr=Point3(h, p, r))
-    return Parallel(posTrack, hprTrack)
+        posTrack = LerpPosInterval(camera, duration, pos=Point3(x, y, z), blendType='easeInOut')
+        hprTrack = LerpHprInterval(camera, duration, hpr=Point3(h, p, r), blendType='easeInOut')
+    return Parallel(posTrack, hprTrack, name=name)
 
 
 def allGroupShot(avatar, duration):
@@ -695,9 +710,15 @@ def suitCameraShakeShot(avatar, duration, shakeIntensity, quake = 0):
     if random.random() > 0.5:
         x = -x
     z = 7 + random.random() * 3
-    track.append(Func(camera.setPos, x, -5, z))
-    track.append(Func(camera.lookAt, Point3(0, 0, 0)))
-    track.append(Wait(shakeDelay))
+    tempNode = render.attachNewNode('tempShakeShot')
+    tempNode.setPos(x, -5, z)
+    tempNode.lookAt(Point3(0, 0, 0))
+    hpr = tempNode.getHpr()
+    tempNode.removeNode()
+    moveDur = min(BATTLE_SHOT_TRANSITION_DURATION, shakeDelay)
+    track.append(LerpPosHprInterval(camera, moveDur, Point3(x, -5, z), hpr, blendType='easeInOut'))
+    if shakeDelay > moveDur:
+        track.append(Wait(shakeDelay - moveDur))
     track.append(shakeCameraTrack(shakeIntensity))
     track.append(Wait(postShakeDelay))
     return track

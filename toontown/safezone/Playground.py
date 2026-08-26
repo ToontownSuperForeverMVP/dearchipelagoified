@@ -209,6 +209,14 @@ class Playground(BattlePlace):
         self.accept('DistributedDoor_doorTrigger', self.handleDoorTrigger)
         base.contentPackMusicManager.playMusic(self.loader.music, looping=True, interrupt=True, volume=0.8)
         self.loader.geom.reparentTo(render)
+        try:
+            from toontown.hood import OutdoorLighting
+            hood = getattr(self.loader, 'hood', None)
+            hoodId = getattr(hood, 'id', getattr(hood, 'hoodId', None))
+            OutdoorLighting.begin(self.loader.geom, hoodId=hoodId,
+                                  zoneId=requestStatus.get('zoneId'))
+        except Exception as error:
+            self.notify.warning('Unable to start outdoor lighting: %s' % error)
         for i in self.loader.nodeList:
             self.loader.enterAnimatedProps(i)
 
@@ -230,12 +238,24 @@ class Playground(BattlePlace):
                 lightsOff.start()
             else:
                 self.loader.hood.startSky()
-                lightsOn = LerpColorScaleInterval(base.cr.playGame.hood.loader.geom, 0.1, Vec4(1, 1, 1, 1))
-                lightsOn.start()
+                try:
+                    from toontown.hood import OutdoorLighting
+                    if not OutdoorLighting._wantFx():
+                        lightsOn = LerpColorScaleInterval(base.cr.playGame.hood.loader.geom, 0.1, Vec4(1, 1, 1, 1))
+                        lightsOn.start()
+                except Exception:
+                    lightsOn = LerpColorScaleInterval(base.cr.playGame.hood.loader.geom, 0.1, Vec4(1, 1, 1, 1))
+                    lightsOn.start()
         else:
             self.loader.hood.startSky()
-            lightsOn = LerpColorScaleInterval(base.cr.playGame.hood.loader.geom, 0.1, Vec4(1, 1, 1, 1))
-            lightsOn.start()
+            try:
+                from toontown.hood import OutdoorLighting
+                if not OutdoorLighting._wantFx():
+                    lightsOn = LerpColorScaleInterval(base.cr.playGame.hood.loader.geom, 0.1, Vec4(1, 1, 1, 1))
+                    lightsOn.start()
+            except Exception:
+                lightsOn = LerpColorScaleInterval(base.cr.playGame.hood.loader.geom, 0.1, Vec4(1, 1, 1, 1))
+                lightsOn.start()
         NametagGlobals.setMasterArrowsOn(1)
         self.zoneId = requestStatus['zoneId']
         self.tunnelOriginList = base.cr.hoodMgr.addLinkTunnelHooks(self, self.loader.nodeList, self.zoneId)
@@ -245,6 +265,11 @@ class Playground(BattlePlace):
         self.fsm.request(how, [requestStatus])
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(self.loader.geom)
+        except Exception:
+            pass
         self.ignoreAll()
         messenger.send('exitPlayground')
         self._telemLimiter.destroy()

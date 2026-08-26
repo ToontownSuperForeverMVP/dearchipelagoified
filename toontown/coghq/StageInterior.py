@@ -86,6 +86,11 @@ class StageInterior(BattlePlace.BattlePlace):
 
     def enter(self, requestStatus):
         self.fsm.enterInitialState()
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(None, style='lawbot_office', zoneId=self.zoneId)
+        except Exception:
+            pass
         base.transitions.fadeOut(t=0)
         self._telemLimiter = TLGatherAllAvs('StageInterior', RotationLimitToH)
         base.localAvatar.inventory.setRespectInvasions(0)
@@ -112,6 +117,11 @@ class StageInterior(BattlePlace.BattlePlace):
         self.acceptOnce('localToonConfrontedStageBoss', handleConfrontedBoss)
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         NametagGlobals.setMasterArrowsOn(0)
         self._telemLimiter.destroy()
         del self._telemLimiter

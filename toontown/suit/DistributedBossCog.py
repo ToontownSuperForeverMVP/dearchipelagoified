@@ -1023,7 +1023,12 @@ class DistributedBossCog(DistributedAvatar.DistributedAvatar, BossCog.BossCog):
         if not toons:
             return seq
         self.notify.debug('battleNode=%s camLoc=%s' % (battleNode, camLoc))
-        seq.append(Func(camera.setPosHpr, battleNode, *camLoc))
+        tempNode = battleNode.attachNewNode('tempCamLoc')
+        tempNode.setPosHpr(*camLoc)
+        targetPos = tempNode.getPos(render)
+        targetHpr = tempNode.getHpr(render)
+        tempNode.removeNode()
+        seq.append(Sequence(Func(camera.wrtReparentTo, render), LerpPosHprInterval(camera, 0.75, targetPos, targetHpr, blendType='easeInOut')))
         suitsOff = Parallel()
         if arrayOfObjs:
             toonArray = toons
@@ -1292,7 +1297,12 @@ class DistributedBossCog(DistributedAvatar.DistributedAvatar, BossCog.BossCog):
             return seq
         self.notify.debug('battleNode=%s camLoc=%s' % (battleNode, camLoc))
         if camLoc:
-            seq.append(Func(camera.setPosHpr, battleNode, *camLoc))
+            tempNode = battleNode.attachNewNode('tempCamLoc')
+            tempNode.setPosHpr(*camLoc)
+            targetPos = tempNode.getPos(render)
+            targetHpr = tempNode.getHpr(render)
+            tempNode.removeNode()
+            seq.append(Sequence(Func(camera.wrtReparentTo, render), LerpPosHprInterval(camera, 0.75, targetPos, targetHpr, blendType='easeInOut')))
         suitsOff = Parallel()
         if arrayOfObjs:
             toonArray = toons

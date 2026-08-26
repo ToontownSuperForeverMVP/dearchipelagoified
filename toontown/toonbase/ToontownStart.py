@@ -69,8 +69,8 @@ backgroundNodePath.find('**/fg').setBin('fixed', 20)
 backgroundNodePath.find('**/bg').setBin('fixed', 10)
 backgroundNodePath.find('**/bg').setScale(aspect2d, VBase3(base.getAspectRatio(), 1, 1))
 base.graphicsEngine.renderFrame()
-DirectGuiGlobals.setDefaultRolloverSound(base.loader.loadSfx('phase_3/audio/sfx/GUI_rollover.ogg'))
-DirectGuiGlobals.setDefaultClickSound(base.loader.loadSfx('phase_3/audio/sfx/GUI_create_toon_fwd.ogg'))
+DirectGuiGlobals.setDefaultRolloverSound(base.loader.loadSfx('phase_3/audio/sfx/836451__feraly__simple-or-cute-ui-ux-interface-hover-sound.wav'))
+DirectGuiGlobals.setDefaultClickSound(base.loader.loadSfx('phase_3/audio/sfx/677861__el_boss__ui-button-click.wav'))
 DirectGuiGlobals.setDefaultDialogGeom(loader.loadModel('phase_3/models/gui/dialog_box_gui'))
 from . import TTLocalizer
 from otp.otpbase import OTPGlobals
@@ -82,8 +82,8 @@ if base.musicManagerIsValid:
         music.setVolume(base.settings.get("music-volume") ** 2)
         music.play()
     print('ToontownStart: Loading default gui sounds')
-    DirectGuiGlobals.setDefaultRolloverSound(base.loader.loadSfx('phase_3/audio/sfx/GUI_rollover.ogg'))
-    DirectGuiGlobals.setDefaultClickSound(base.loader.loadSfx('phase_3/audio/sfx/GUI_create_toon_fwd.ogg'))
+    DirectGuiGlobals.setDefaultRolloverSound(base.loader.loadSfx('phase_3/audio/sfx/836451__feraly__simple-or-cute-ui-ux-interface-hover-sound.wav'))
+    DirectGuiGlobals.setDefaultClickSound(base.loader.loadSfx('phase_3/audio/sfx/677861__el_boss__ui-button-click.wav'))
 else:
     music = None
 from panda3d.core import TextNode

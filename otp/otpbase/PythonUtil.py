@@ -3082,14 +3082,26 @@ class SubframeCall:
                     self._taskName,
                     priority=taskPriority)
     def _doCallback(self, task):
+        if not hasattr(self, '_functor') or self._functor is None:
+            return task.done if task is not None else None
         functor = self._functor
-        del self._functor
-        functor()
-        del self._name
+        self._functor = None
+        if hasattr(self, '_name'):
+            try:
+                del self._name
+            except Exception:
+                pass
         self._taskName = None
-        return task.done
+        functor()
+        return task.done if task is not None else None
     def cleanup(self):
-        if (self._taskName):
+        self._functor = None
+        if hasattr(self, '_name'):
+            try:
+                del self._name
+            except Exception:
+                pass
+        if hasattr(self, '_taskName') and self._taskName:
             taskMgr.remove(self._taskName)
             self._taskName = None
 

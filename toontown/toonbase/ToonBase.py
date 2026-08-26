@@ -833,8 +833,8 @@ class ToonBase(OTPBase.OTPBase):
         for sfm in self.sfxManagerList:
             sfm.setVolume(sfxVol ** 2)
         if hasattr(self, 'localAvatar'):
-            DirectGuiGlobals.setDefaultRolloverSound(base.loader.loadSfx('phase_3/audio/sfx/GUI_rollover.ogg'))
-            DirectGuiGlobals.setDefaultClickSound(base.loader.loadSfx('phase_3/audio/sfx/GUI_create_toon_fwd.ogg'))
+            DirectGuiGlobals.setDefaultRolloverSound(base.loader.loadSfx('phase_3/audio/sfx/836451__feraly__simple-or-cute-ui-ux-interface-hover-sound.wav'))
+            DirectGuiGlobals.setDefaultClickSound(base.loader.loadSfx('phase_3/audio/sfx/677861__el_boss__ui-button-click.wav'))
             DirectGuiGlobals.setDefaultDialogGeom(loader.loadModel('phase_3/models/gui/dialog_box_gui'))
             self.localAvatar.soundRun = base.loader.loadSfx('phase_3.5/audio/sfx/AV_footstep_runloop.ogg')
             self.localAvatar.soundWalk = base.loader.loadSfx('phase_3.5/audio/sfx/AV_footstep_walkloop.ogg')

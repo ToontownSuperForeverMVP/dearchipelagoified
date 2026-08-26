@@ -134,6 +134,12 @@ class PartyLoader(SafeZoneLoader.SafeZoneLoader):
         if ownerId:
             self.partyOwnerId = ownerId
         zoneId = requestStatus['zoneId']
+        try:
+            from toontown.hood import OutdoorLighting
+            from toontown.toonbase.ToontownGlobals import PartyHood
+            OutdoorLighting.begin(self.geom, hoodId=PartyHood, zoneId=zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start outdoor lighting: %s' % error)
         self.notify.debug('enterParty, ownerId = %s, zoneId = %s' % (self.partyOwnerId, zoneId))
         self.accept(self.partyDoneEvent, self.handlePartyDone)
         self.place = Party.Party(self, self.partyOwnerId, zoneId, self.fsm.getStateNamed('party'), self.partyDoneEvent)
@@ -144,6 +150,11 @@ class PartyLoader(SafeZoneLoader.SafeZoneLoader):
 
     def exitParty(self):
         self.notify.debug('exitParty')
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(self.geom)
+        except Exception:
+            pass
         self.ignore(self.partyDoneEvent)
         self.place.exit()
         self.place.unload()

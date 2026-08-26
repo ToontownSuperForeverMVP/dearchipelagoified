@@ -91,6 +91,11 @@ class DistributedLawOfficeFloor(DistributedLevel.DistributedLevel, LawOfficeBase
         modelCount = len(levelSpec.getAllEntIds())
         loader.beginBulkLoad('factory', TTLocalizer.HeadingToFactoryTitle % TTLocalizer.FactoryNames[self.lawOfficeId], modelCount, 1, TTLocalizer.TIP_COGHQ)
         DistributedLevel.DistributedLevel.privGotSpec(self, levelSpec)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.shadeExtraSubtree(self.geom)
+        except Exception:
+            pass
         loader.endBulkLoad('factory')
         messenger.send('LawOffice_Spec_Loaded')
 
@@ -122,6 +127,11 @@ class DistributedLawOfficeFloor(DistributedLevel.DistributedLevel, LawOfficeBase
 
     def disable(self):
         self.notify.debug('disable')
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.clearExtraSubtree(getattr(self, 'geom', None))
+        except Exception:
+            pass
         base.localAvatar.setCameraCollisionsCanMove(0)
         if hasattr(self, 'suits'):
             del self.suits

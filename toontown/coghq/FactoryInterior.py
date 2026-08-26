@@ -83,6 +83,11 @@ class FactoryInterior(BattlePlace.BattlePlace):
 
     def enter(self, requestStatus):
         self.fsm.enterInitialState()
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(None, style='factory_int', zoneId=self.zoneId)
+        except Exception:
+            pass
         base.transitions.fadeOut(t=0)
         base.localAvatar.inventory.setRespectInvasions(0)
         self._telemLimiter = TLGatherAllAvs('FactoryInterior', RotationLimitToH)
@@ -109,6 +114,11 @@ class FactoryInterior(BattlePlace.BattlePlace):
         self.acceptOnce('localToonConfrontedForeman', handleConfrontedForeman)
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         NametagGlobals.setMasterArrowsOn(0)
         self._telemLimiter.destroy()
         del self._telemLimiter

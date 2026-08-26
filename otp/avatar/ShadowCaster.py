@@ -54,6 +54,20 @@ class ShadowCaster:
         dropShadow.setScale(0.4)
         dropShadow.flattenMedium()
         dropShadow.setBillboardAxis(2)
+        # The original blob texture is small.  Nearest/point sampling makes its
+        # alpha edge look like large square pixels beneath the toon, especially
+        # at modern display resolutions.  Force smooth alpha and trilinear
+        # filtering on every texture used by the shadow model.
+        dropShadow.setTransparency(TransparencyAttrib.MAlpha)
+        dropShadow.setAntialias(AntialiasAttrib.MMultisample)
+        try:
+            textures = dropShadow.findAllTextures()
+            for texture in textures:
+                texture.setMinfilter(Texture.FTLinearMipmapLinear)
+                texture.setMagfilter(Texture.FTLinear)
+                texture.setAnisotropicDegree(4)
+        except Exception:
+            pass
         dropShadow.setColor(0.0, 0.0, 0.0, globalDropShadowGrayLevel, 1)
         self.shadowPlacer = ShadowPlacer(base.shadowTrav, dropShadow, OTPGlobals.WallBitmask, OTPGlobals.FloorBitmask)
         self.dropShadow = dropShadow

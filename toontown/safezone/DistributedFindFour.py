@@ -298,14 +298,14 @@ class DistributedFindFour(DistributedNode.DistributedNode):
         if self.seatPos <= 2:
             position = self.table.seats[1].getPos()
             position = position + Vec3(0, -8, 12.8)
-            int = LerpPosHprInterval(camera, 2, position, Vec3(0, -38, 0), camera.getPos(), camera.getHpr())
+            int = LerpPosHprInterval(camera, 2, position, Vec3(0, -38, 0), camera.getPos(), camera.getHpr(), blendType='easeInOut')
         else:
             position = self.table.seats[4].getPos()
             position = position + Vec3(0, -8, 12.8)
             if camera.getH() < 0:
-                int = LerpPosHprInterval(camera, 2, position, Vec3(-180, -20, 0), camera.getPos(), camera.getHpr())
+                int = LerpPosHprInterval(camera, 2, position, Vec3(-180, -20, 0), camera.getPos(), camera.getHpr(), blendType='easeInOut')
             else:
-                int = LerpPosHprInterval(camera, 2, position, Vec3(180, -20, 0), camera.getPos(), camera.getHpr())
+                int = LerpPosHprInterval(camera, 2, position, Vec3(180, -20, 0), camera.getPos(), camera.getHpr(), blendType='easeInOut')
         int.start()
 
     def enterWaitingToBegin(self):

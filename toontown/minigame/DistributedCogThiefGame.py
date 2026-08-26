@@ -904,5 +904,5 @@ class DistributedCogThiefGame(DistributedMinigame):
 
     def getIntroTrack(self):
         base.camera.setPosHpr(0, -13.66, 13.59, 0, -51.6, 0)
-        result = Sequence(Wait(2), LerpPosHprInterval(base.camera, 13, Point3(self.cameraTopView[0], self.cameraTopView[1], self.cameraTopView[2]), Point3(self.cameraTopView[3], self.cameraTopView[4], self.cameraTopView[5]), blendType='easeIn'))
+        result = Sequence(Wait(2), LerpPosHprInterval(base.camera, 13, Point3(self.cameraTopView[0], self.cameraTopView[1], self.cameraTopView[2]), Point3(self.cameraTopView[3], self.cameraTopView[4], self.cameraTopView[5]), blendType='easeInOut'))
         return result

@@ -526,7 +526,7 @@ class DistributedBanquetTable(DistributedObject.DistributedObject, FSM.FSM, Banq
             self.boss.toMovieMode()
             self.__enableControlInterface()
             self.startPosHprBroadcast()
-            self.grabTrack = Sequence(self.grabTrack, Func(camera.wrtReparentTo, localAvatar), LerpPosHprInterval(camera, 1, self.pitcherCamPos, self.pitcherCamHpr), Func(self.boss.toCraneMode))
+            self.grabTrack = Sequence(self.grabTrack, Func(camera.wrtReparentTo, localAvatar), LerpPosHprInterval(camera, 1, self.pitcherCamPos, self.pitcherCamHpr, blendType='easeInOut'), Func(self.boss.toCraneMode))
             if self.TugOfWarControls:
                 self.__spawnUpdateKeyPressRateTask()
             self.accept('exitCrane', self.gotBossZapped)

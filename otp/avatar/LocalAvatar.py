@@ -776,6 +776,9 @@ class LocalAvatar(DistributedAvatar.DistributedAvatar, DistributedSmoothNode.Dis
         print(')', end=' ')
 
     def posCamera(self, lerp, time):
+        if hasattr(self, 'orbitalCamera') and self.orbitalCamera:
+            self.orbitalCamera.start(transition=True)
+            return
         if not lerp:
             self.positionCameraWithPusher(self.getCompromiseCameraPos(), self.getLookAtPoint())
         else:
@@ -796,7 +799,7 @@ class LocalAvatar(DistributedAvatar.DistributedAvatar, DistributedSmoothNode.Dis
                 self.cameraLerp.finish()
                 self.cameraLerp = None
             self.cameraLerp = LerpPosHprInterval(camera, time, Point3(x, y, z), Point3(h, p, r), other=self,
-                                                 name='posCamera')
+                                                 name='posCamera', blendType='easeInOut')
             self.cameraLerp.start()
 
     def getClampedAvatarHeight(self):
@@ -909,10 +912,11 @@ class LocalAvatar(DistributedAvatar.DistributedAvatar, DistributedSmoothNode.Dis
     def getGeom(self):
         return self.__geom
 
-    def startUpdateSmartCamera(self, push = 1):
+    def startUpdateSmartCamera(self, push = 1, transition = True):
         self.initCameraPositions()
         self.setCameraPositionByIndex(self.cameraIndex)
-        self.orbitalCamera.start()
+        if hasattr(self, 'orbitalCamera') and self.orbitalCamera:
+            self.orbitalCamera.start(transition=transition)
         return
         if self._smartCamEnabled:
             LocalAvatar.notify.warning('redundant call to startUpdateSmartCamera')

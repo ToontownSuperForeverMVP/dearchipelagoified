@@ -161,6 +161,11 @@ class DistributedBossbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         planeNode.setCollideMask(ToontownGlobals.PieBitmask)
         self.geom.attachNewNode(planeNode)
         self.geom.reparentTo(render)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.shadeExtraSubtree(self.geom)
+        except Exception:
+            pass
         self.pickupFoodSfx = loader.loadSfx('phase_6/audio/sfx/SZ_MM_gliss.ogg')
         self.explodeSfx = loader.loadSfx('phase_4/audio/sfx/firework_distance_02.ogg')
 
@@ -175,6 +180,11 @@ class DistributedBossbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                 spot.cleanup()
 
         self.golfSpots = {}
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.clearExtraSubtree(getattr(self, 'geom', None))
+        except Exception:
+            pass
         self.geom.removeNode()
         del self.geom
         DistributedBossCog.DistributedBossCog.unloadEnvironment(self)
@@ -261,12 +271,12 @@ class DistributedBossbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         waiterCamPos = Point3(rToonStartPos)
         waiterCamPos += Point3(-5, -10, 5)
         waiterCamHpr = Point3(-30, 0, 0)
-        track = Sequence(Func(camera.reparentTo, render), Func(camera.setPosHpr, *elevCamPosHpr), Func(rToon.setChatAbsolute, TTL.BossbotRTWelcome, CFSpeech), LerpPosHprInterval(camera, 3, closeUpRTCamPos, closeUpRTCamHpr), Func(rToon.setChatAbsolute, TTL.BossbotRTRemoveSuit, CFSpeech), Wait(3), Func(self.clearChat), self.loseCogSuits(self.toonsA + self.toonsB, render, (loseSuitCamPos[0],
+        track = Sequence(Func(camera.wrtReparentTo, render), LerpPosHprInterval(camera, 1.0, Point3(*elevCamPosHpr[:3]), Point3(*elevCamPosHpr[3:]), blendType='easeInOut'), Func(rToon.setChatAbsolute, TTL.BossbotRTWelcome, CFSpeech), LerpPosHprInterval(camera, 3, closeUpRTCamPos, closeUpRTCamHpr, blendType='easeInOut'), Func(rToon.setChatAbsolute, TTL.BossbotRTRemoveSuit, CFSpeech), Wait(3), Func(self.clearChat), self.loseCogSuits(self.toonsA + self.toonsB, render, (loseSuitCamPos[0],
          loseSuitCamPos[1],
          loseSuitCamPos[2],
          loseSuitCamHpr[0],
          loseSuitCamHpr[1],
-         loseSuitCamHpr[2])), self.toonNormalEyes(self.involvedToons), Wait(2), Func(camera.setPosHpr, closeUpRTCamPos, closeUpRTCamHpr), Func(rToon.setChatAbsolute, TTL.BossbotRTFightWaiter, CFSpeech), Wait(1), LerpHprInterval(camera, 2, Point3(-15, 5, 0)), Sequence(Func(rToon.suit.loop, 'walk'), rToon.hprInterval(1, VBase3(270, 0, 0)), rToon.posInterval(2.5, rToonEndPos), Func(rToon.suit.loop, 'neutral')), Wait(3), Func(rToon.clearChat), Func(self.__hideResistanceToon))
+         loseSuitCamHpr[2])), self.toonNormalEyes(self.involvedToons), Wait(2), LerpPosHprInterval(camera, 1.0, closeUpRTCamPos, closeUpRTCamHpr, blendType='easeInOut'), Func(rToon.setChatAbsolute, TTL.BossbotRTFightWaiter, CFSpeech), Wait(1), LerpHprInterval(camera, 2, Point3(-15, 5, 0), blendType='easeInOut'), Sequence(Func(rToon.suit.loop, 'walk'), rToon.hprInterval(1, VBase3(270, 0, 0)), rToon.posInterval(2.5, rToonEndPos), Func(rToon.suit.loop, 'neutral')), Wait(3), Func(rToon.clearChat), Func(self.__hideResistanceToon))
         return track
 
     def enterFrolic(self):
@@ -320,24 +330,29 @@ class DistributedBossbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         def getCamRTPos(rNode = rNode):
             return rNode.getPos(render)
 
+        tempNodeRT = rToon.attachNewNode('tempRTIntro')
+        tempNodeRT.setPos(0, 22, 6)
+        rtCamPos = tempNodeRT.getPos(render)
+        rtCamHpr = tempNodeRT.getHpr(render)
+        tempNodeRT.removeNode()
+
         track = Sequence(
-            Func(camera.reparentTo, render),
-            Func(camera.setPos, rToon, 0, 22, 6),
-            Func(camera.setHpr, 0, 0, 0),
+            Func(camera.wrtReparentTo, render),
+            LerpPosHprInterval(camera, 1.0, rtCamPos, rtCamHpr, blendType='easeInOut'),
             Func(rToon.setChatAbsolute, TTL.BossbotRTWearWaiter, CFSpeech),
             Wait(3.0),
             self.wearCogSuits(self.toonsA + self.toonsB, render, None, waiter=True),
             Func(rToon.clearChat),
             Func(self.setPosHpr, bossPos, Point3(0, 0, 0)),
             Parallel(LerpHprInterval(self.banquetDoor, 2, Point3(90, 0, 0)),
-                     LerpPosInterval(camera, 2, getCamBossPos)),
+                     LerpPosInterval(camera, 2, getCamBossPos, blendType='easeInOut')),
             Func(self.setChatAbsolute, TTL.BossbotBossPreTwo1, CFSpeech),
             Wait(3.0),
             Func(self.setChatAbsolute, TTL.BossbotBossPreTwo2, CFSpeech),
             Wait(3.0),
             Parallel(
                 LerpHprInterval(self.banquetDoor, 2, Point3(0, 0, 0)),
-                LerpPosHprInterval(camera, 2, getCamRTPos, Point3(10, -8, 0))),
+                LerpPosHprInterval(camera, 2, getCamRTPos, Point3(10, -8, 0), blendType='easeInOut')),
             Func(self.setPos, bossEndPos),
             Func(self.clearChat),
             Func(rToon.setChatAbsolute, TTL.BossbotRTServeFood1, CFSpeech),
@@ -555,21 +570,19 @@ class DistributedBossbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
     def makePrepareBattleThreeMovie(self):
         loseSuitCamAngle = (0, 19, 6, -180, -5, 0)
         track = Sequence(
-            Func(camera.reparentTo, self),
-            Func(camera.setPos, Point3(0, -45, 5)),
-            Func(camera.setHpr, Point3(0, 14, 0)),
+            Func(camera.wrtReparentTo, self),
+            LerpPosHprInterval(camera, 1.0, Point3(0, -45, 5), Point3(0, 14, 0), other=self, blendType='easeInOut'),
             Func(self.setChatAbsolute, TTL.BossbotPhase3Speech1, CFSpeech),
             Wait(3.0),
             Func(self.setChatAbsolute, TTL.BossbotPhase3Speech2, CFSpeech),
             Wait(3.0),
-            Func(camera.setPosHpr, base.localAvatar, *loseSuitCamAngle),
+            LerpPosHprInterval(camera, 1.0, Point3(*loseSuitCamAngle[:3]), Point3(*loseSuitCamAngle[3:]), other=base.localAvatar, blendType='easeInOut'),
             Wait(1.0),
             self.loseCogSuits(self.toonsA + self.toonsB, base.localAvatar, loseSuitCamAngle),
             self.toonNormalEyes(self.involvedToons),
             Wait(2),
-            Func(camera.reparentTo, self),
-            Func(camera.setPos, Point3(0, -45, 5)),
-            Func(camera.setHpr, Point3(0, 14, 0)),
+            Func(camera.wrtReparentTo, self),
+            LerpPosHprInterval(camera, 1.0, Point3(0, -45, 5), Point3(0, 14, 0), other=self, blendType='easeInOut'),
             Func(self.setChatAbsolute, TTL.BossbotPhase3Speech3, CFSpeech),
             Wait(3.0),
             Func(self.clearChat))
@@ -753,9 +766,8 @@ class DistributedBossbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         newHpr.setX(newHpr.getX() + 180)
         bossTrack = Sequence(
             Func(self.show),
-            Func(camera.reparentTo, self),
-            Func(camera.setPos, Point3(0, -35, 25)),
-            Func(camera.setHpr, Point3(0, -20, 0)),
+            Func(camera.wrtReparentTo, self),
+            LerpPosHprInterval(camera, 1.0, Point3(0, -35, 25), Point3(0, -20, 0), other=self, blendType='easeInOut'),
             Func(self.setChatAbsolute, TTL.BossbotRewardSpeech1, CFSpeech),
             Wait(3.0),
             Func(self.setChatAbsolute, TTL.BossbotRewardSpeech2, CFSpeech),
@@ -825,9 +837,14 @@ class DistributedBossbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.resistanceToon.setPosHpr(*ToontownGlobals.BossbotRTEpiloguePosHpr)
         self.resistanceToon.loop('Sit')
         self.__arrangeToonsAroundResistanceToonForReward()
-        camera.reparentTo(render)
-        camera.setPos(self.resistanceToon, -9, 12, 6)
-        camera.lookAt(self.resistanceToon, 0, 0, 3)
+        camera.wrtReparentTo(render)
+        tempNode = render.attachNewNode('tempEpilogue')
+        tempNode.setPos(self.resistanceToon, -9, 12, 6)
+        tempNode.lookAt(self.resistanceToon, 0, 0, 3)
+        targetPos = tempNode.getPos(render)
+        targetHpr = tempNode.getHpr(render)
+        tempNode.removeNode()
+        LerpPosHprInterval(camera, 0.75, targetPos, targetHpr, blendType='easeInOut').start()
         intervalName = 'EpilogueMovie'
         seq = Sequence(self.makeEpilogueMovie(), name=intervalName)
         seq.start()

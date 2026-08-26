@@ -1242,7 +1242,7 @@ class DistributedVineGame(DistributedMinigame):
         self.changeFacingInterval = Sequence()
         if not (vineIndex == 0 or vineIndex == VineGameGlobals.NumVines - 1):
             destPos = self.getFocusCameraPos(vineIndex, newFacingRight)
-            self.changeFacingInterval.append(LerpPosInterval(base.camera, 0.5, destPos))
+            self.changeFacingInterval.append(LerpPosInterval(base.camera, 0.5, destPos, blendType='easeInOut'))
             self.changeFacingInterval.append(Func(self.clearChangeFacingInterval))
         self.changeFacingInterval.start()
 
@@ -1257,7 +1257,7 @@ class DistributedVineGame(DistributedMinigame):
         self.clearAttachingToVineCamIval()
         self.attachingToVineCamIval = Sequence()
         destPos = self.getFocusCameraPos(vineIndex, facingRight)
-        self.attachingToVineCamIval.append(LerpPosInterval(base.camera, 0.5, destPos))
+        self.attachingToVineCamIval.append(LerpPosInterval(base.camera, 0.5, destPos, blendType='easeInOut'))
         self.attachingToVineCamIval.append(Func(self.clearAttachingToVineCamIval))
         self.attachingToVineCamIval.start()
 
@@ -1481,7 +1481,7 @@ class DistributedVineGame(DistributedMinigame):
                 if didCameraMove:
                     oneSeq.append(attachingToVine)
                 else:
-                    attachAndMoveCam = Parallel(attachingToVine, LerpPosInterval(base.camera, pos=self.getFocusCameraPos(0, True), duration=2))
+                    attachAndMoveCam = Parallel(attachingToVine, LerpPosInterval(base.camera, pos=self.getFocusCameraPos(0, True), duration=2, blendType='easeInOut'))
                     oneSeq.append(attachAndMoveCam)
                 oneSeq.append(Func(av.setPos, 0, 0, 0))
                 oneSeq.append(Func(av.setH, 0))

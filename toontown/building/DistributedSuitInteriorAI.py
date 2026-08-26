@@ -405,10 +405,14 @@ class DistributedSuitInteriorAI(DistributedObjectAI.DistributedObjectAI):
         self.d_setToons()
         if len(self.toons) == 0:
             self.bldg.deleteSuitInterior()
-        elif self.currentFloor == self.topFloor:
-            self.battle.resume(self.currentFloor, topFloor=1)
         else:
-            self.battle.resume(self.currentFloor, topFloor=0)
+            # Send this floor's Archipelago check as soon as the floor is
+            # cleared, before the party moves on or the building reward plays.
+            self.battle.rewardFloorCleared()
+            if self.currentFloor == self.topFloor:
+                self.battle.resume(self.currentFloor, topFloor=1)
+            else:
+                self.battle.resume(self.currentFloor, topFloor=0)
         return None
 
     def exitBattleDone(self):

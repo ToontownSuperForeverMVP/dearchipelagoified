@@ -303,14 +303,13 @@ class DistributedSellbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                 camera.posHprInterval(8, Point3(-22, -100, 35), Point3(-10, -13, 0), blendType='easeInOut'),
                 IndirectInterval(toonTrack, 0, 18))),
             (5.6, Func(self.setChatAbsolute, promoteDoobers, CFSpeech)),
+            (8.0, camera.posHprInterval(2.0, Point3(-23.1, 15.7, 17.2), Point3(-160, -2.4, 0), blendType='easeInOut')),
             (9, IndirectInterval(dooberTrack, 0, 9)),
-            (10, Sequence(
-                Func(self.clearChat),
-                Func(camera.setPosHpr, -23.1, 15.7, 17.2, -160, -2.4, 0))),
+            (10, Func(self.clearChat)),
             (12, Func(self.setChatAbsolute, doobersAway, CFSpeech)),
+            (14.0, camera.posHprInterval(2.0, Point3(-25, -99, 10), Point3(-14, 10, 0), blendType='easeInOut')),
             (16, Parallel(
                 Func(self.clearChat),
-                Func(camera.setPosHpr, -25, -99, 10, -14, 10, 0),
                 IndirectInterval(dooberTrack, 14),
                 IndirectInterval(toonTrack, 30))),
             (18, Func(self.setChatAbsolute, welcomeToons, CFSpeech)),
@@ -320,18 +319,18 @@ class DistributedSellbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                 Func(self.cagedToon.setChatAbsolute, interruptBoss, CFSpeech),
                 ActorInterval(self.cagedToon, 'wave'),
                 Func(self.cagedToon.loop, 'neutral'))),
+            (23.5, camera.posHprInterval(1.5, Point3(-12, -15, 27), Point3(-151, -15, 0), blendType='easeInOut')),
             (25, Sequence(
                 Func(self.clearChat),
                 Func(self.cagedToon.clearChat),
-                Func(camera.setPosHpr, -12, -15, 27, -151, -15, 0),
                 ActorInterval(self, 'Ff_lookRt'))),
+            (26.0, camera.posHprInterval(1.0, Point3(-12, 48, 94), Point3(-26, 20, 0), blendType='easeInOut')),
             (27, Sequence(
                 Func(self.cagedToon.setChatAbsolute, rescueQuery, CFSpeech),
-                Func(camera.setPosHpr, -12, 48, 94, -26, 20, 0),
                 ActorInterval(self.cagedToon, 'wave'),
                 Func(self.cagedToon.loop, 'neutral'))),
+            (29.5, camera.posHprInterval(1.5, Point3(-20, -35, 10), Point3(-88, 25, 0), blendType='easeInOut')),
             (31, Sequence(
-                Func(camera.setPosHpr, -20, -35, 10, -88, 25, 0),
                 Func(self.setChatAbsolute, discoverToons, CFSpeech),
                 Func(self.cagedToon.nametag3d.setScale, 1),
                 Func(self.cagedToon.clearChat),
@@ -340,9 +339,9 @@ class DistributedSellbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                 Func(self.clearChat),
                 self.loseCogSuits(self.toonsA, self.battleANode, (0, 18, 5, -180, 0, 0)),
                 self.loseCogSuits(self.toonsB, self.battleBNode, (0, 18, 5, -180, 0, 0)))),
+            (35.5, camera.posHprInterval(1.5, Point3(-23.4, -145.6, 44.0), Point3(-10.0, -12.5, 0), blendType='easeInOut')),
             (37, Sequence(
                 self.toonNormalEyes(self.involvedToons),
-                Func(camera.setPosHpr, -23.4, -145.6, 44.0, -10.0, -12.5, 0),
                 Func(self.loop, 'Fb_neutral'),
                 Func(self.rampA.request, 'retract'),
                 Func(self.rampB.request, 'retract'),
@@ -397,8 +396,8 @@ class DistributedSellbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         seq = Sequence(name=name)
         seq.append(Func(self.cage.setPos, self.cagePos[self.cageIndex]))
         if hasLocalToon:
-            seq += [Func(camera.reparentTo, render),
-             Func(camera.setPosHpr, self.cage, 0, -50, 0, 0, 0, 0),
+            seq += [Func(camera.wrtReparentTo, render),
+             LerpPosHprInterval(camera, 0.75, Point3(0, -50, 0), Point3(0, 0, 0), other=self.cage, blendType='easeInOut'),
              Func(localAvatar.setCameraFov, ToontownGlobals.CogHQCameraFov),
              Func(self.hide)]
         seq += [Wait(0.5),
@@ -410,9 +409,8 @@ class DistributedSellbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
          Func(self.cagedToonMovieFunction, 4, self.cageIndex)]
         if hasLocalToon:
             seq += [Func(self.show),
-             Func(camera.reparentTo, localAvatar),
-             Func(camera.setPos, localAvatar.getOldCameraPos()),
-             Func(camera.setHpr, 0, 0, 0)]
+             Func(camera.wrtReparentTo, localAvatar),
+             LerpPosHprInterval(camera, 0.75, localAvatar.getOldCameraPos(), Point3(0, 0, 0), other=localAvatar, blendType='easeInOut')]
         self.cageIndex += 1
         return seq
 
@@ -467,8 +465,8 @@ class DistributedSellbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             Func(self.cagedToon.loop, 'neutral'),
             Func(self.cagedToon.headsUp, localAvatar),
             Func(self.cagedToon.setLocalPageChat, speech, 0),
-            Func(camera.reparentTo, localAvatar),
-            Func(camera.setPos, 0, -9, 9),
+            Func(camera.wrtReparentTo, localAvatar),
+            LerpPosHprInterval(camera, 0.75, Point3(0, -9, 9), Point3(0, 0, 0), other=localAvatar, blendType='easeOut'),
             Func(camera.lookAt, self.cagedToon, Point3(0, 0, 2)), name=name)
         return seq
 
@@ -540,9 +538,19 @@ class DistributedSellbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.rope.setTransparency(1)
 
         self.geom.reparentTo(render)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.shadeExtraSubtree(self.geom)
+        except Exception:
+            pass
 
     def unloadEnvironment(self):
         DistributedBossCog.DistributedBossCog.unloadEnvironment(self)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.clearExtraSubtree(getattr(self, 'geom', None))
+        except Exception:
+            pass
         self.geom.removeNode()
         del self.geom
         del self.cage
@@ -1032,8 +1040,8 @@ class DistributedSellbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.rampB.request('retract')
         self.rampC.request('extend')
         self.__arrangeToonsAroundCage()
-        camera.reparentTo(render)
-        camera.setPosHpr(-24, 52, 27.5, -53, -13, 0)
+        camera.wrtReparentTo(render)
+        LerpPosHprInterval(camera, 0.75, Point3(-24, 52, 27.5), Point3(-53, -13, 0), blendType='easeInOut').start()
         intervalName = 'EpilogueMovie'
         seq = Sequence(self.__makeCageOpenMovie(), name=intervalName)
         seq.start()

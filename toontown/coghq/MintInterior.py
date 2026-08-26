@@ -83,6 +83,11 @@ class MintInterior(BattlePlace.BattlePlace):
 
     def enter(self, requestStatus):
         self.fsm.enterInitialState()
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(None, style='cashbot_mint', zoneId=self.zoneId)
+        except Exception:
+            pass
         base.transitions.fadeOut(t=0)
         base.localAvatar.inventory.setRespectInvasions(0)
         base.cr.forbidCheesyEffects(1)
@@ -109,6 +114,11 @@ class MintInterior(BattlePlace.BattlePlace):
         self.acceptOnce('localToonConfrontedMintBoss', handleConfrontedBoss)
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         NametagGlobals.setMasterArrowsOn(0)
         bboard.remove(DistributedMint.DistributedMint.ReadyPost)
         self._telemLimiter.destroy()

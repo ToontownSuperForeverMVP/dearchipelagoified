@@ -197,7 +197,7 @@ class DistributedNPCClerk(DistributedNPCToonBase):
             self.setupAvatars(av)
             if isLocalToon:
                 camera.wrtReparentTo(render)
-                self.cameraLerp = LerpPosQuatInterval(camera, 1, Point3(-5, 9, self.getHeight() - 0.5), Point3(-150, -2, 0), other=self, blendType='easeOut', name=self.uniqueName('lerpCamera'))
+                self.cameraLerp = LerpPosQuatInterval(camera, 1, Point3(-5, 9, self.getHeight() - 0.5), Point3(-150, -2, 0), other=self, blendType='easeInOut', name=self.uniqueName('lerpCamera'))
                 self.cameraLerp.start()
             self.setChatAbsolute(TTLocalizer.STOREOWNER_GREETING, CFSpeech | CFTimeout)
             if isLocalToon:

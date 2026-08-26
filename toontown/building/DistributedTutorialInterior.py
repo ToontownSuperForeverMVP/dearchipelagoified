@@ -28,6 +28,11 @@ class DistributedTutorialInterior(DistributedObject.DistributedObject):
         self.setup()
 
     def disable(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(getattr(self, 'interior', None))
+        except Exception:
+            pass
         self.interior.removeNode()
         del self.interior
         self.street.removeNode()
@@ -86,6 +91,11 @@ class DistributedTutorialInterior(DistributedObject.DistributedObject):
         self.randomGenerator.seed(self.zoneId)
         self.interior = loader.loadModel('phase_3.5/models/modules/toon_interior_tutorial')
         self.interior.reparentTo(render)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(self.interior, style='toon', zoneId=self.zoneId)
+        except Exception:
+            pass
         dnaStore = DNAStorage()
         node = loader.loadDNAFile(self.cr.playGame.hood.dnaStore, 'phase_3.5/dna/tutorial_street.dna')
         self.street = render.attachNewNode(node)

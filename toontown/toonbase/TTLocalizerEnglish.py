@@ -9982,6 +9982,7 @@ OptionNames = {
     'discord-rich-presence': 'Discord Rich Presence',
     "archipelago-textsize": "Archipelago Log Text Size",
     'boss-alerts': "Cog Boss Attack Alerts",
+    'bk-warning': "Low Logic Hint Warning",
     "archipelago-log-bg": "Archipelago Log Background",
     "color-blind-mode": "Colorblind Mode",
     "want-legacy-models": "Toggle TTO Species Models*",
@@ -10022,6 +10023,29 @@ OptionNames = {
     "anti-aliasing": "Anti-Aliasing*",
     "frame-rate-meter": "FPS Meter",
     "fps-limit": "FPS Limit",
+    "dynamic-shadows": "Dynamic Shadows",
+    "shadow-quality": "Shadow Quality",
+    "lighting-experimental-world-shadows": "World Shadows",
+    "drop-shadow-strength": "Toon Shadow Darkness",
+    "want-procedural-sky": "Procedural Sky",
+    "sky-cloud-quality": "Cloud Quality",
+    "lighting-bloom-enabled": "Lighting Bloom",
+    "lighting-god-rays": "Sun Rays",
+    "lighting-fog-enabled": "Atmospheric Fog",
+    "fog-density-multiplier": "Fog Density",
+    "lighting-intensity": "World Light Intensity",
+    "want-day-night-cycle": "Day/Night Cycle",
+    "day-duration-minutes": "Day Duration (Mins)",
+    "night-duration-minutes": "Night Duration (Mins)",
+    "day-night-mode": "Day/Night Mode",
+    "want-aurora-borealis": "Aurora Borealis",
+    "lighting-contact-shadows": "Contact Shadows (SSAO)",
+    "lighting-streetlamps-enabled": "Street Lamp Lighting",
+    "lighting-tonemap-mode": "Tonemapping Mode",
+    "lighting-exposure": "Exposure Brightness",
+    "want-water-reflections": "Water Reflections",
+    "motion-blur": "Motion Blur",
+    "motion-blur-strength": "Motion Blur Strength",
 
     # Audio
     "music": "Music",
@@ -10066,6 +10090,21 @@ OptionFPSLimit = {
  240: "240 FPS",
  360: "360 FPS"
 }
+
+OptionDayNightMode = [
+    "Dynamic",
+    "Real-Time Sync",
+    "Always Noon",
+    "Always Sunset",
+    "Always Midnight",
+    "Always Dawn"
+]
+
+OptionTonemapMode = [
+    "ACES",
+    "Reinhard",
+    "Linear"
+]
 
 OptionEnabled = "Enabled"
 OptionDisabled = "Disabled"

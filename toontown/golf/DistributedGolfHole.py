@@ -140,6 +140,11 @@ class DistributedGolfHole(DistributedPhysicsWorld.DistributedPhysicsWorld, FSM, 
         self.removePlayBackDelayDelete()
         self.request('Cleanup')
         taskMgr.remove(self.golfPowerTaskName)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(self.terrainModel)
+        except Exception:
+            pass
         DistributedPhysicsWorld.DistributedPhysicsWorld.delete(self)
         GolfHoleBase.GolfHoleBase.delete(self)
         if hasattr(self, 'perfectIval'):
@@ -241,6 +246,11 @@ class DistributedGolfHole(DistributedPhysicsWorld.DistributedPhysicsWorld, FSM, 
 
     def loadLevel(self):
         GolfHoleBase.GolfHoleBase.loadLevel(self)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(self.terrainModel, style='golf_course')
+        except Exception:
+            pass
         self.teeNodePath = self.terrainModel.find('**/tee0')
         if self.teeNodePath.isEmpty():
             teePos = Vec3(0, 0, 10)
@@ -1500,7 +1510,7 @@ class DistributedGolfHole(DistributedPhysicsWorld.DistributedPhysicsWorld, FSM, 
             if doInterval:
                 curHpr = camera.getHpr(render)
                 angle = PythonUtil.closestDestAngle2(curHpr[0], 0)
-                self.camInterval = Sequence(Func(base.camera.wrtReparentTo, render), LerpPosHprInterval(base.camera, 2, self.camTopViewPos, self.camTopViewHpr))
+                self.camInterval = Sequence(Func(base.camera.wrtReparentTo, render), LerpPosHprInterval(base.camera, 2, self.camTopViewPos, self.camTopViewHpr, blendType='easeInOut'))
                 self.camInterval.start()
             else:
                 base.camera.reparentTo(render)
@@ -1509,7 +1519,7 @@ class DistributedGolfHole(DistributedPhysicsWorld.DistributedPhysicsWorld, FSM, 
         elif doInterval:
             curHpr = camera.getHpr(self.ballFollow)
             angle = PythonUtil.closestDestAngle2(curHpr[0], 0)
-            self.camInterval = Sequence(Func(base.camera.wrtReparentTo, self.ballFollow), LerpPosHprInterval(base.camera, 2, self.camPosBallFollow, self.camHprBallFollow))
+            self.camInterval = Sequence(Func(base.camera.wrtReparentTo, self.ballFollow), LerpPosHprInterval(base.camera, 2, self.camPosBallFollow, self.camHprBallFollow, blendType='easeInOut'))
             self.camInterval.start()
         else:
             base.camera.reparentTo(self.ballFollow)

@@ -146,7 +146,7 @@ class GolfKart(StateData.StateData):
     def enterBoarding(self, nodePath):
         camera.wrtReparentTo(nodePath)
         heading = PythonUtil.fitDestAngle2Src(camera.getH(nodePath), 180)
-        self.cameraBoardTrack = LerpPosHprInterval(camera, 1.5, Point3(0, 18, 8), Point3(heading, -10, 0))
+        self.cameraBoardTrack = LerpPosHprInterval(camera, 1.5, Point3(0, 18, 8), Point3(heading, -10, 0), blendType='easeInOut')
         self.cameraBoardTrack.start()
         return None
 

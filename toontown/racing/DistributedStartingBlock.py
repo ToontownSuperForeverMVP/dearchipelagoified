@@ -447,11 +447,11 @@ class DistributedStartingBlock(DistributedObject.DistributedObject, FSM):
         self.cPos = camera.getPos(self.av)
         self.cHpr = camera.getHpr(self.av)
         camera.wrtReparentTo(self.nodePath)
-        cameraTrack = LerpPosHprInterval(camera, 1.5, self.cameraPos, self.cameraHpr)
+        cameraTrack = LerpPosHprInterval(camera, 1.5, self.cameraPos, self.cameraHpr, blendType='easeInOut')
         return cameraTrack
 
     def generateCameraReturnMoveTrack(self):
-        cameraTrack = Sequence(Func(camera.wrtReparentTo, self.av), LerpPosHprInterval(camera, 1.5, self.cPos, self.cHpr))
+        cameraTrack = Sequence(Func(camera.wrtReparentTo, self.av), LerpPosHprInterval(camera, 1.5, self.cPos, self.cHpr, blendType='easeInOut'))
         return cameraTrack
 
     def generateKartDisappearTrack(self):
@@ -647,7 +647,7 @@ class DistributedViewingBlock(DistributedStartingBlock):
         cameraPos = Point3(23, -10, 7)
         cameraHpr = Point3(65, -10, 0)
         camera.wrtReparentTo(self.nodePath)
-        cameraTrack = LerpPosHprInterval(camera, 1.5, cameraPos, cameraHpr)
+        cameraTrack = LerpPosHprInterval(camera, 1.5, cameraPos, cameraHpr, blendType='easeInOut')
         return cameraTrack
 
     def makeGui(self):

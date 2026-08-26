@@ -160,6 +160,11 @@ class EstateLoader(SafeZoneLoader.SafeZoneLoader):
         if ownerId:
             self.estateOwnerId = ownerId
         zoneId = requestStatus['zoneId']
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(self.geom, hoodId=MyEstate, zoneId=zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start outdoor lighting: %s' % error)
         self.notify.debug('enterEstate, ownerId = %s, zoneId = %s' % (self.estateOwnerId, zoneId))
         self.accept(self.estateDoneEvent, self.handleEstateDone)
         self.place = Estate.Estate(self, self.estateOwnerId, zoneId, self.fsm.getStateNamed('estate'), self.estateDoneEvent)
@@ -170,6 +175,11 @@ class EstateLoader(SafeZoneLoader.SafeZoneLoader):
 
     def exitEstate(self):
         self.notify.debug('exitEstate')
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(self.geom)
+        except Exception:
+            pass
         self.ignore(self.estateDoneEvent)
         self.place.exit()
         self.place.unload()

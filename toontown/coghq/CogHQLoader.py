@@ -129,12 +129,24 @@ class CogHQLoader(StateData.StateData):
             return ZoneUtil.getHoodId(status['zoneId']) == self.hood.hoodId
 
     def enterCogHQExterior(self, requestStatus):
+        try:
+            from toontown.hood import OutdoorLighting
+            zoneId = ZoneUtil.getCanonicalZoneId(requestStatus.get('zoneId'))
+            OutdoorLighting.begin(getattr(self, 'geom', None),
+                                  hoodId=self.hood.hoodId, zoneId=zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start outdoor lighting: %s' % error)
         self.placeClass = self.getExteriorPlaceClass()
         self.enterPlace(requestStatus)
         self.hood.spawnTitleText(requestStatus['zoneId'])
         messenger.send('enterSafeZone')
 
     def exitCogHQExterior(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(getattr(self, 'geom', None))
+        except Exception:
+            pass
         messenger.send('exitSafeZone')
         taskMgr.remove('titleText')
         self.hood.hideTitleText()
@@ -145,9 +157,31 @@ class CogHQLoader(StateData.StateData):
     def enterCogHQLobby(self, requestStatus):
         self.placeClass = CogHQLobby.CogHQLobby
         self.enterPlace(requestStatus)
+        # Bossbot's "lobby" is the open-air clubhouse courtyard.  The other
+        # Cog HQ lobbies are enclosed and use the dedicated interior rig.
+        self._lobbyLighting = None
+        try:
+            from toontown.toonbase import ToontownGlobals
+            zoneId = ZoneUtil.getCanonicalZoneId(requestStatus.get('zoneId'))
+            from toontown.hood import OutdoorLighting
+            if zoneId == ToontownGlobals.BossbotLobby:
+                OutdoorLighting.begin(getattr(self, 'geom', None),
+                                      style='golf_course')
+            else:
+                OutdoorLighting.begin(getattr(self, 'geom', None),
+                                      style='cog', zoneId=zoneId)
+            self._lobbyLighting = OutdoorLighting
+        except Exception as error:
+            self.notify.warning('Unable to start Cog HQ lobby lighting: %s' % error)
         self.hood.spawnTitleText(requestStatus['zoneId'])
 
     def exitCogHQLobby(self):
+        try:
+            if self._lobbyLighting is not None:
+                self._lobbyLighting.end(getattr(self, 'geom', None))
+        except Exception:
+            pass
+        self._lobbyLighting = None
         taskMgr.remove('titleText')
         self.hood.hideTitleText()
         self.exitPlace()
@@ -155,10 +189,22 @@ class CogHQLoader(StateData.StateData):
         return
 
     def enterCogHQBossBattle(self, requestStatus):
+        try:
+            from toontown.hood import OutdoorLighting, ZoneUtil
+            zoneId = ZoneUtil.getCanonicalZoneId(requestStatus.get('zoneId'))
+            OutdoorLighting.begin(getattr(self, 'geom', None),
+                                  hoodId=self.hood.hoodId, zoneId=zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start boss battle lighting: %s' % error)
         self.placeClass = self.getBossPlaceClass()
         self.enterPlace(requestStatus)
 
     def exitCogHQBossBattle(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(getattr(self, 'geom', None))
+        except Exception:
+            pass
         self.exitPlace()
         self.placeClass = None
         return

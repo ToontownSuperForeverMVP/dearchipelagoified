@@ -294,7 +294,7 @@ class DistributedPartyDanceActivityBase(DistributedPartyActivity):
                 pos = camera.getPos()
                 camParent = camera.getParent()
                 camera.wrtReparentTo(camNode)
-                self.localToonDanceSequence = Sequence(Func(self.__localDisableControls), Parallel(camera.posInterval(0.5, Point3(0, 15, 10), blendType='easeIn'), camera.hprInterval(0.5, Point3(h, -20, 0), blendType='easeIn')), camNode.hprInterval(4.0, Point3(camNode.getH() - 360, 0, 0)), Func(camera.wrtReparentTo, camParent), Func(camNode.removeNode), Parallel(camera.posInterval(0.5, pos, blendType='easeOut'), camera.hprInterval(0.5, hpr, blendType='easeOut')), Func(self.__localEnableControls))
+                self.localToonDanceSequence = Sequence(Func(self.__localDisableControls), Parallel(camera.posInterval(0.5, Point3(0, 15, 10), blendType='easeInOut'), camera.hprInterval(0.5, Point3(h, -20, 0), blendType='easeInOut')), camNode.hprInterval(4.0, Point3(camNode.getH() - 360, 0, 0)), Func(camera.wrtReparentTo, camParent), Func(camNode.removeNode), Parallel(camera.posInterval(0.5, pos, blendType='easeInOut'), camera.hprInterval(0.5, hpr, blendType='easeInOut')), Func(self.__localEnableControls))
             else:
                 self.localToonDanceSequence = Sequence(Func(self.__localDisableControls), Wait(2.0), Func(self.__localEnableControls))
             self.localToonDanceSequence.start()
@@ -365,7 +365,7 @@ class DistributedPartyDanceActivityBase(DistributedPartyActivity):
             pos = node.getPos(self.danceFloor)
             node2.removeNode()
             node.removeNode()
-            self.cameraParallel = Parallel(camera.posInterval(0.5, pos, blendType='easeIn'), camera.hprInterval(0.5, Point3(0, -27, 0), other=toon.getParent(), blendType='easeIn'))
+            self.cameraParallel = Parallel(camera.posInterval(0.5, pos, blendType='easeInOut'), camera.hprInterval(0.5, Point3(0, -27, 0), other=toon.getParent(), blendType='easeInOut'))
             self.cameraParallel.start()
         self.currentCameraMode = mode
         return

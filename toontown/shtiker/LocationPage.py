@@ -1,13 +1,63 @@
 import re
+from collections import Counter
 from . import ShtikerPage
-from apworld.toontown import locations, options, fish, test_location, ToontownWinCondition
-from BaseClasses import MultiWorld
+from apworld.toontown import (locations, options, fish, test_location,
+                             ToontownWinCondition, ITEM_DEFINITIONS,
+                             ITEM_NAME_TO_ID, ToontownItemName, TPSanity)
+from BaseClasses import ItemClassification, MultiWorld
+from direct.task import Task
 from toontown.toonbase import TTLocalizer
 from toontown.toonbase import ToontownGlobals
+from toontown.hood import ZoneUtil
+from toontown.toontowngui import TTDialog
 from direct.gui.DirectGui import *
 from panda3d.core import *
 from toontown.archipelago.definitions import util
 from ..util.ui import make_dsl_scrollable
+
+
+BK_LOCATION_THRESHOLD = 3
+
+
+class _SimulatedLogicState:
+    """Read-only avatar view with one prospective AP item added."""
+
+    _regionToAccessItem = {
+        locations.ToontownRegionName.TTC.value: ToontownItemName.TTC_ACCESS,
+        locations.ToontownRegionName.DD.value: ToontownItemName.DD_ACCESS,
+        locations.ToontownRegionName.DG.value: ToontownItemName.DG_ACCESS,
+        locations.ToontownRegionName.MML.value: ToontownItemName.MML_ACCESS,
+        locations.ToontownRegionName.TB.value: ToontownItemName.TB_ACCESS,
+        locations.ToontownRegionName.DDL.value: ToontownItemName.DDL_ACCESS,
+        locations.ToontownRegionName.GS.value: ToontownItemName.GS_ACCESS,
+        locations.ToontownRegionName.AA.value: ToontownItemName.AA_ACCESS,
+        locations.ToontownRegionName.SBHQ.value: ToontownItemName.SBHQ_ACCESS,
+        locations.ToontownRegionName.CBHQ.value: ToontownItemName.CBHQ_ACCESS,
+        locations.ToontownRegionName.LBHQ.value: ToontownItemName.LBHQ_ACCESS,
+        locations.ToontownRegionName.BBHQ.value: ToontownItemName.BBHQ_ACCESS,
+    }
+
+    def __init__(self, avatar, extraItemId):
+        self.avatar = avatar
+        self.itemCounts = Counter(itemId for _, itemId in avatar.getReceivedItems())
+        self.itemCounts[extraItemId] += 1
+
+    def __getattr__(self, name):
+        return getattr(self.avatar, name)
+
+    def count(self, item, player):
+        return self.itemCounts[ITEM_NAME_TO_ID[item]]
+
+    def has(self, item, player, wantedCount=1):
+        return self.count(item, player) >= wantedCount
+
+    def can_reach(self, region, filler, player):
+        if self.avatar.slotData.get('tpsanity', 0) != TPSanity.option_keys:
+            return True
+        regionName = region.value if hasattr(region, 'value') else region
+        accessItem = self._regionToAccessItem.get(regionName)
+        return accessItem is None or self.has(accessItem.value, player)
+
 
 class LocationNode(DirectFrame):
     def __init__(self, parent):
@@ -65,10 +115,10 @@ class LocationCategory():
 
     def get_locations(self):
         return sorted(self.locations, key=locations.LOCATION_NAME_TO_ID.get)
-    
+
     def get_raw_name(self):
         return self.name
-    
+
     def get_display_name(self):
         name_to_use = self.name
         if len(name_to_use) > 32:
@@ -96,6 +146,8 @@ class LocationPage(ShtikerPage.ShtikerPage):
         self.LocationNode.hide()
         self.logicalLocations = 0
         self.selectedLocation: int | None = None
+        self.bkWarningDialog = None
+        self.bkWarningTaskName = 'bk-warning-%s' % id(self)
 
     def load(self):
         title_text_scale = 0.12
@@ -111,7 +163,142 @@ class LocationPage(ShtikerPage.ShtikerPage):
         self.itemFrameZorigin = 0.365
         self.buttonXstart = self.itemFrameXorigin + 0.475
         self.regenerateScrollList()
+        taskMgr.doMethodLater(12.0, self.__checkForBK,
+                              self.bkWarningTaskName)
         return
+
+    def unload(self):
+        taskMgr.remove(self.bkWarningTaskName)
+        self.__cleanupBKWarning()
+        ShtikerPage.ShtikerPage.unload(self)
+
+    def __getEnabledUncheckedLocations(self, state=None):
+        state = state or base.localAvatar
+        checkedLocationIds = set(base.localAvatar.getCheckedLocations())
+        forbiddenTypes = self.get_disabled_location_types()
+        return [
+            locationData for locationData in locations.LOCATION_DEFINITIONS
+            if locationData.type not in forbiddenTypes
+            and self.is_enabled_estate_location(locationData)
+            and util.ap_location_name_to_id(locationData.name.value) not in checkedLocationIds
+            and test_location(locationData, state, MultiWorld, 1,
+                              base.localAvatar.slotData)
+        ]
+
+    @staticmethod
+    def __locationWeight(locationData):
+        if locationData.type == locations.ToontownLocationType.BOSS_META:
+            return max(0, base.localAvatar.slotData.get('checks_per_boss', 4))
+        return 1
+
+    def __getCurrentRegion(self):
+        hoodToRegion = {
+            ToontownGlobals.ToontownCentral: locations.ToontownRegionName.TTC,
+            ToontownGlobals.DonaldsDock: locations.ToontownRegionName.DD,
+            ToontownGlobals.DaisyGardens: locations.ToontownRegionName.DG,
+            ToontownGlobals.MinniesMelodyland: locations.ToontownRegionName.MML,
+            ToontownGlobals.TheBrrrgh: locations.ToontownRegionName.TB,
+            ToontownGlobals.DonaldsDreamland: locations.ToontownRegionName.DDL,
+            ToontownGlobals.GoofySpeedway: locations.ToontownRegionName.GS,
+            ToontownGlobals.OutdoorZone: locations.ToontownRegionName.AA,
+            ToontownGlobals.SellbotHQ: locations.ToontownRegionName.SBHQ,
+            ToontownGlobals.CashbotHQ: locations.ToontownRegionName.CBHQ,
+            ToontownGlobals.LawbotHQ: locations.ToontownRegionName.LBHQ,
+            ToontownGlobals.BossbotHQ: locations.ToontownRegionName.BBHQ,
+        }
+        return hoodToRegion.get(ZoneUtil.getCanonicalHoodId(base.localAvatar.getZoneId()))
+
+    def __getBestHintExample(self, currentLocations):
+        """Return the available progression item with the largest logic gain."""
+        currentIds = {location.name for location in currentLocations}
+        localPool = Counter(base.localAvatar.slotData.get('local_itempool', []))
+        received = Counter(itemId for _, itemId in base.localAvatar.getReceivedItems())
+        currentRegion = self.__getCurrentRegion()
+        best = None
+
+        for itemData in ITEM_DEFINITIONS:
+            if not itemData.classification & ItemClassification.progression:
+                continue
+            itemId = ITEM_NAME_TO_ID[itemData.name.value]
+            # local_itempool reflects the actual generated randomizer state. Do
+            # not recommend an item which is absent or whose copies were found.
+            if not localPool[itemId] or received[itemId] >= localPool[itemId]:
+                continue
+
+            simulated = _SimulatedLogicState(base.localAvatar, itemId)
+            simulatedLocations = self.__getEnabledUncheckedLocations(simulated)
+            newlyReachable = [location for location in simulatedLocations
+                              if location.name not in currentIds]
+            gain = sum(self.__locationWeight(location) for location in newlyReachable)
+            nearbyGain = sum(self.__locationWeight(location) for location in newlyReachable
+                             if location.region == currentRegion)
+            score = (gain, nearbyGain, itemData.name.value)
+            if gain > 0 and (best is None or score > best[0]):
+                best = (score, itemData.name.value)
+
+        if best is None:
+            return None, 0
+        return best[1], best[0][0]
+
+    def __getRunKey(self):
+        slotData = getattr(base.localAvatar, 'slotData', {})
+        return repr((slotData.get('seed'), base.localAvatar.getName()))
+
+    def __checkForBK(self, task):
+        task.delayTime = 5.0
+        if not base.settings.get('bk-warning'):
+            return Task.again
+        if not getattr(base.localAvatar, 'slotData', None):
+            return Task.again
+        if not getattr(base.localAvatar, 'totalChecks', 0):
+            return Task.again
+
+        runKey = self.__getRunKey()
+        if not hasattr(base, '_bkWarningRuns'):
+            base._bkWarningRuns = set()
+        seenRuns = list(base.settings.get('bk-warning-seen-runs') or [])
+        if runKey in base._bkWarningRuns or runKey in seenRuns:
+            return Task.again
+
+        currentLocations = self.__getEnabledUncheckedLocations()
+        logicalCount = sum(self.__locationWeight(location)
+                           for location in currentLocations)
+        if logicalCount > BK_LOCATION_THRESHOLD:
+            return Task.again
+
+        example, gain = self.__getBestHintExample(currentLocations)
+        exampleText = ''
+        if example:
+            exampleText = ('\n\nBased on your current location and setup, a likely useful example is:\n'
+                           '!hint %s\n(It could put about %s more locations in logic.)'
+                           % (example, gain))
+        else:
+            exampleText = '\n\nExample: !hint <item or check name>'
+
+        message = (
+            'You only have %s unchecked location%s in logic. If you feel stuck, '
+            'ask Archipelago chat for help by typing !hint followed by the item '
+            'or check name.%s'
+            % (logicalCount, '' if logicalCount == 1 else 's', exampleText)
+        )
+        # Mark it first so reconnects or duplicate tasks cannot open it twice.
+        base._bkWarningRuns.add(runKey)
+        seenRuns.append(runKey)
+        base.settings.set('bk-warning-seen-runs', seenRuns[-50:])
+        base.settings.write()
+        self.bkWarningDialog = TTDialog.TTGlobalDialog(
+            message=message,
+            doneEvent='bk-warning-done-%s' % id(self),
+            style=TTDialog.Acknowledge,
+        )
+        self.acceptOnce('bk-warning-done-%s' % id(self), self.__cleanupBKWarning)
+        self.bkWarningDialog.show()
+        return Task.again
+
+    def __cleanupBKWarning(self):
+        if self.bkWarningDialog is not None:
+            self.bkWarningDialog.cleanup()
+            self.bkWarningDialog = None
 
     def enter(self):
         ShtikerPage.ShtikerPage.enter(self)

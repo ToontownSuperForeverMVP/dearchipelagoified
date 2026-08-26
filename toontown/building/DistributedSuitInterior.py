@@ -122,6 +122,12 @@ class DistributedSuitInterior(DistributedObject.DistributedObject):
         if self.elevatorModelOut != None:
             self.elevatorModelOut.removeNode()
         if self.floorModel != None:
+            try:
+                from toontown.hood import OutdoorLighting
+                OutdoorLighting.clearExtraSubtree(self.floorModel)
+                OutdoorLighting.end(self.floorModel)
+            except Exception:
+                pass
             self.floorModel.removeNode()
         self.leftDoorIn = None
         self.rightDoorIn = None
@@ -253,6 +259,12 @@ class DistributedSuitInterior(DistributedObject.DistributedObject):
         if self.currentFloor == self.numFloors - 1:
             self.battleMusic = f'suit-building-boss'
         if self.floorModel:
+            try:
+                from toontown.hood import OutdoorLighting
+                OutdoorLighting.clearExtraSubtree(self.floorModel)
+                OutdoorLighting.end(self.floorModel)
+            except Exception:
+                pass
             self.floorModel.removeNode()
         if self.currentFloor == 0:
             self.floorModel = loader.loadModel('phase_7/models/modules/suit_interior')
@@ -267,6 +279,25 @@ class DistributedSuitInterior(DistributedObject.DistributedObject):
             SuitHs = self.Cubicle_SuitHs
             SuitPositions = self.Cubicle_SuitPositions
         self.floorModel.reparentTo(render)
+        try:
+            deptStyle = 'cog'
+            bldg = base.cr.doId2do.get(self.distBldgDoId)
+            track = getattr(bldg, 'track', None)
+            if not track and len(self.suits) > 0 and getattr(self.suits[0], 'dna', None) is not None:
+                track = getattr(self.suits[0].dna, 'dept', None)
+            if track == 's':
+                deptStyle = 'sellbot_building'
+            elif track == 'm':
+                deptStyle = 'cashbot_building'
+            elif track == 'l':
+                deptStyle = 'lawbot_building'
+            elif track == 'c':
+                deptStyle = 'bossbot_building'
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(self.floorModel, style=deptStyle)
+            OutdoorLighting.shadeExtraSubtree(self.floorModel)
+        except Exception:
+            pass
         elevIn = self.floorModel.find('**/elevator-in')
         elevOut = self.floorModel.find('**/elevator-out')
         for index in range(len(self.suits)):
@@ -331,8 +362,12 @@ class DistributedSuitInterior(DistributedObject.DistributedObject):
     def enterBattle(self, ts = 0):
         if self.elevatorOutOpen == 1:
             self.__playCloseElevatorOut(self.uniqueName('close-out-elevator'))
-            camera.setPos(0, -15, 6)
-            camera.headsUp(self.elevatorModelOut)
+            tempNode = render.attachNewNode('tempBattle')
+            tempNode.setPos(0, -15, 6)
+            tempNode.headsUp(self.elevatorModelOut)
+            targetHpr = tempNode.getHpr()
+            tempNode.removeNode()
+            LerpPosHprInterval(camera, 0.5, Point3(0, -15, 6), targetHpr, blendType='easeInOut').start()
 
         base.contentPackMusicManager.playMusic(self.battleMusic, looping=1, volume=0.9, interrupt=True)
         return None

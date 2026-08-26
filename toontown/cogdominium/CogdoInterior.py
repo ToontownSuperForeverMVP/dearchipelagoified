@@ -68,9 +68,19 @@ class CogdoInterior(Place.Place):
     def enter(self, requestStatus):
         self.fsm.enterInitialState()
         self.zoneId = requestStatus['zoneId']
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(None, style='cogdo', zoneId=self.zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start Cogdominium lighting: %s' % error)
         self.accept('DSIDoneEvent', self.handleDSIDoneEvent)
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         self.ignoreAll()
 
     def load(self):

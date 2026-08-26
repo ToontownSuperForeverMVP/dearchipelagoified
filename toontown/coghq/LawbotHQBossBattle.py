@@ -18,7 +18,17 @@ class LawbotHQBossBattle(CogHQBossBattle.CogHQBossBattle):
         CogHQBossBattle.CogHQBossBattle.unload(self)
 
     def enter(self, requestStatus):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(None, style='lawbot_hq', zoneId=self.zoneId)
+        except Exception:
+            pass
         CogHQBossBattle.CogHQBossBattle.enter(self, requestStatus, DistributedLawbotBoss.OneBossCog)
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         CogHQBossBattle.CogHQBossBattle.exit(self)

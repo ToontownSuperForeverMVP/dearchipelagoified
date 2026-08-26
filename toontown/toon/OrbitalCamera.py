@@ -1,9 +1,10 @@
 from panda3d.core import (BitMask32, CollisionHandlerFloor,
                           CollisionHandlerQueue, CollisionNode, CollisionRay,
                           CollisionSegment, CollisionTraverser, NodePath,
-                          Vec3, WindowProperties)
+                          Point3, Vec3, WindowProperties)
 from direct.directnotify import DirectNotifyGlobal
 from direct.fsm.FSM import FSM
+from direct.interval.IntervalGlobal import LerpHprInterval, LerpPosHprInterval
 from direct.showbase.InputStateGlobal import inputState
 from direct.showbase.PythonUtil import fitSrcAngle2Dest, lerp, reduceAngle
 from direct.task import Task
@@ -56,8 +57,16 @@ class OrbitalCamera(FSM, NodePath, ParamObj):
         self.ignoreRMB = False
         self.runner = CamRunner()
         self.cam_toggled = False
+        self._smoothedMouseDelta = Vec3(0, 0, 0)
+        self._collisionPos = None
+        self._presetHprInterval = None
+        self._returnInterval = None
+        self._transitionOnActive = True
 
     def destroy(self):
+        if self._presetHprInterval:
+            self._presetHprInterval.pause()
+            self._presetHprInterval = None
         self.destroyCollisions()
         self._rmbToken.release()
         del self._rmbToken
@@ -107,33 +116,54 @@ class OrbitalCamera(FSM, NodePath, ParamObj):
         self.enableInput()
 
         base.camNode.setLodCenter(self.subject)
+        try:
+            base.camNode.getLens().setNear(0.35)
+        except Exception:
+            pass
 
         self._initMaxDistance()
+        self._collisionPos = None
         self._startCollisionCheck()
         if not self.firstPerson:
             self.acceptWheel()
         self.acceptTab()
+        if self._returnInterval:
+            self._returnInterval.pause()
+            self._returnInterval = None
         self.reparentTo(self.subject)
-        base.camera.reparentTo(self)
         self.setPos(0, 0, self.subject.getHeight())
-        camera.setPosHpr(self.camOffset[0], self.camOffset[1], 10, 0, 0, 0)
+        targetPos = Point3(self.camOffset[0], self.camOffset[1], 10)
+        targetHpr = Vec3(0, 0, 0)
+        if getattr(self, '_transitionOnActive', True) and not base.camera.isEmpty():
+            base.camera.wrtReparentTo(self)
+            curPos = camera.getPos(self)
+            curHpr = camera.getHpr(self)
+            if (curPos - targetPos).lengthSquared() > 0.05 or curHpr.lengthSquared() > 0.05:
+                self._returnInterval = LerpPosHprInterval(camera, 0.35, targetPos, targetHpr, startPos=curPos, startHpr=curHpr, blendType='easeOut', name='orbitalCameraReturn')
+                self._returnInterval.start()
+            else:
+                base.camera.reparentTo(self)
+                camera.setPosHpr(targetPos, targetHpr)
+        else:
+            base.camera.reparentTo(self)
+            camera.setPosHpr(targetPos, targetHpr)
 
     def _initMaxDistance(self):
         self._maxDistance = abs(self.camOffset[1])
 
     def exitActive(self):
+        self.disableInput()
         self._stopCollisionCheck()
-        base.camNode.setLodCenter(NodePath())
+        if self._presetHprInterval:
+            self._presetHprInterval.pause()
+            self._presetHprInterval = None
         self.ignoreWheel()
         self.ignoreTab()
+        if self._returnInterval:
+            self._returnInterval.pause()
+            self._returnInterval = None
 
-        self.disableInput()
-
-    def enableMouseControl(self, pressed, toggle=False):
-        if not toggle:
-            if not pressed or self.ignoreRMB:
-                return
-
+    def enableMouseControl(self, pressed, enabledByMouse=True):
         if not base.CAM_TOGGLE_LOCK:
             self.ignore("InputState-RMB")
             self.accept("InputState-RMB", self.disableMouseControl)
@@ -178,6 +208,7 @@ class OrbitalCamera(FSM, NodePath, ParamObj):
 
         if self.mouseControl:
             self.mouseControl = False
+            self._smoothedMouseDelta.set(0, 0, 0)
             self._stopMouseControlTasks()
 
             base.win.movePointer(
@@ -242,8 +273,17 @@ class OrbitalCamera(FSM, NodePath, ParamObj):
         camSensitivityX = base.settings.get("camSensitivityX")
         camSensitivityY = base.settings.get("camSensitivityY")
 
-        if self.mouseDelta[0] or self.mouseDelta[1]:
-            (dx, dy) = self.mouseDelta
+        rawDx, rawDy = self.mouseDelta
+        if rawDx or rawDy:
+            # A very short, adaptive filter removes pixel stair-stepping at low
+            # speeds while large flicks remain virtually one-to-one.
+            dt = min(globalClock.getDt(), 0.05)
+            magnitude = min(1.0, (abs(rawDx) + abs(rawDy)) / 18.0)
+            response = 32.0 + 38.0 * magnitude
+            alpha = 1.0 - pow(2.718281828, -response * dt)
+            self._smoothedMouseDelta.x += (rawDx - self._smoothedMouseDelta.x) * alpha
+            self._smoothedMouseDelta.y += (rawDy - self._smoothedMouseDelta.y) * alpha
+            dx, dy = self._smoothedMouseDelta.x, self._smoothedMouseDelta.y
             if subjectTurning:
                 dx = +dx
             hNode.setH(hNode, -dx * camSensitivityX)
@@ -255,6 +295,9 @@ class OrbitalCamera(FSM, NodePath, ParamObj):
                 self._checkHBounds(hNode)
 
             self.setR(render, 0)
+        else:
+            # Do not let filtering add drift or a sluggish tail after release.
+            self._smoothedMouseDelta.set(0, 0, 0)
 
         return task.cont
 
@@ -359,6 +402,7 @@ class OrbitalCamera(FSM, NodePath, ParamObj):
         self._cHandlerQueue = CollisionHandlerQueue()
         self._cTrav = CollisionTraverser("OrbitCam.cTrav")
         self._cTrav.addCollider(self._collSolidNp, self._cHandlerQueue)
+        self._collisionPos = Vec3(camera.getPos(self))
         taskMgr.add(
             self._collisionCheckTask, OrbitalCamera.CollisionCheckTaskName, priority=45
         )
@@ -369,68 +413,101 @@ class OrbitalCamera(FSM, NodePath, ParamObj):
         if self.oobeEnabled():
             return Task.cont
 
-        self._cTrav.traverse(self.subject.getGeom())
+        if not hasattr(self, '_cTrav') or not self._cTrav:
+            return Task.done
 
-        if self.firstPerson or self.subject.isDisguised:
-            self.subject.getGeomNode().hide()
+        if hasattr(self.subject, 'getGeom'):
+            self._cTrav.traverse(self.subject.getGeom())
+        elif hasattr(self.subject, 'getGeomNode'):
+            self._cTrav.traverse(self.subject.getGeomNode())
+
+        if self.firstPerson or getattr(self.subject, 'isDisguised', False):
+            if hasattr(self.subject, 'getGeomNode') and self.subject.getGeomNode():
+                self.subject.getGeomNode().hide()
         else:
-            self.subject.getGeomNode().show()
+            if hasattr(self.subject, 'getGeomNode') and self.subject.getGeomNode():
+                self.subject.getGeomNode().show()
 
-        if self._cHandlerQueue.getNumEntries() == 0:
-            for i in range(self._cHandlerQueue.getNumEntries()):
-                if not self._cHandlerQueue.getEntry(i).hasSurfacePoint():
-                    return Task.cont
-
-        self._cHandlerQueue.sortEntries()
-
-        cNormal = (0, -1, 0)
         collEntry = None
         numEntries = self._cHandlerQueue.getNumEntries()
-
         if numEntries > 0:
-            collEntry = self._cHandlerQueue.getEntry(0)
-            cNormal = collEntry.getSurfaceNormal(self)
+            self._cHandlerQueue.sortEntries()
+            for i in range(numEntries):
+                entry = self._cHandlerQueue.getEntry(i)
+                if entry.hasSurfacePoint():
+                    collEntry = entry
+                    break
 
         if not (collEntry and collEntry.hasSurfacePoint()):
-            camera.setPos(self.camOffset)
-            camera.setZ(0)
+            targetPos = Vec3(self.camOffset[0], self.camOffset[1], 0)
+            self._moveTowardCollisionTarget(targetPos, blocked=False)
 
             if not self.firstPerson:
-                if self.subject.isDisguised:
-                    self.subject.getGeomNode().hide()
+                if getattr(self.subject, 'isDisguised', False):
+                    if hasattr(self.subject, 'getGeomNode') and self.subject.getGeomNode():
+                        self.subject.getGeomNode().hide()
                 else:
-                    self.subject.getGeomNode().show()
+                    if hasattr(self.subject, 'getGeomNode') and self.subject.getGeomNode():
+                        self.subject.getGeomNode().show()
 
-            return task.cont
+            return Task.cont
 
+        cNormal = collEntry.getSurfaceNormal(self)
         cPoint = collEntry.getSurfacePoint(self)
-        offset = 0.9
-        camera.setPos(cPoint + cNormal * offset)
+        offset = 0.65
+        hitPos = cPoint + cNormal * offset
+        if hitPos.y > -1.2:
+            hitPos.y = -1.2
+        hitPos.x = 0
+        hitPos.z = 0
+        self._moveTowardCollisionTarget(hitPos, blocked=True)
         distance = camera.getDistance(self)
         if not self.firstPerson:
-            if distance < 1.8 or self.subject.isDisguised:
-                self.subject.getGeomNode().hide()
+            if distance < 1.8 or getattr(self.subject, 'isDisguised', False):
+                if hasattr(self.subject, 'getGeomNode') and self.subject.getGeomNode():
+                    self.subject.getGeomNode().hide()
             else:
-                self.subject.getGeomNode().show()
-        self.subject.ccPusherTrav.traverse(render)
+                if hasattr(self.subject, 'getGeomNode') and self.subject.getGeomNode():
+                    self.subject.getGeomNode().show()
+        if hasattr(self.subject, 'ccPusherTrav') and self.subject.ccPusherTrav:
+            self.subject.ccPusherTrav.traverse(render)
         return Task.cont
 
+    def _moveTowardCollisionTarget(self, targetPos, blocked):
+        """Smooth camera-wall motion without making free orbit feel floaty."""
+        currentPos = Vec3(camera.getPos(self))
+        if self._collisionPos is None or (currentPos - self._collisionPos).lengthSquared() > 4.0:
+            self._collisionPos = currentPos
+        dt = min(globalClock.getDt(), 0.05)
+        # Pull in rapidly for safety; ease back out more gently to prevent the
+        # familiar pop when the camera clears a wall edge.
+        movingInward = Vec3(targetPos).lengthSquared() < currentPos.lengthSquared()
+        response = 34.0 if blocked and movingInward else 15.0
+        alpha = 1.0 - pow(2.718281828, -response * dt)
+        self._collisionPos += (Vec3(targetPos) - self._collisionPos) * alpha
+        camera.setPos(self, self._collisionPos)
     def _stopCollisionCheck(self):
         taskMgr.remove(OrbitalCamera.CollisionCheckTaskName)
-        self._cTrav.removeCollider(self._collSolidNp)
-        del self._cHandlerQueue
-        del self._cTrav
-        self._collSolidNp.detachNode()
-        del self._collSolidNp
+        if hasattr(self, '_cTrav') and self._cTrav:
+            if hasattr(self, '_collSolidNp') and self._collSolidNp:
+                self._cTrav.removeCollider(self._collSolidNp)
+            del self._cTrav
+        if hasattr(self, '_cHandlerQueue'):
+            del self._cHandlerQueue
+        if hasattr(self, '_collSolidNp') and self._collSolidNp:
+            self._collSolidNp.detachNode()
+            del self._collSolidNp
+        self._collisionPos = None
         if self.subject:
-            if self.subject.isDisguised:
-                self.subject.getGeomNode().hide()
+            if getattr(self.subject, 'isDisguised', False):
+                if hasattr(self.subject, 'getGeomNode') and self.subject.getGeomNode():
+                    self.subject.getGeomNode().hide()
             else:
-                self.subject.getGeomNode().show()
+                if hasattr(self.subject, 'getGeomNode') and self.subject.getGeomNode():
+                    self.subject.getGeomNode().show()
 
     def setPresetPos(self, presetIndex, transition=True):
         self.presetPos = presetIndex
-
         self.setCameraPos(
             self.presets[self.presetPos][0],
             self.presets[self.presetPos][1],
@@ -441,10 +518,20 @@ class OrbitalCamera(FSM, NodePath, ParamObj):
     def setCameraPos(self, y, h, p, transition=True):
         t = (-14 - y) / -12
         z = lerp(self.subject.getHeight(), self.subject.getHeight(), t)
-        self._collSolid.setPointB(0, y + 1, 0)
+        if hasattr(self, '_collSolid') and self._collSolid:
+            self._collSolid.setPointB(0, y + 1, 0)
         self.camOffset.setY(y)
         self.setPos(self.getX(), self.getY(), z)
-        self.setHpr(h, p, 0)
+        if self._presetHprInterval:
+            self._presetHprInterval.pause()
+            self._presetHprInterval = None
+        if transition and self.isActive():
+            self._presetHprInterval = LerpHprInterval(
+                self, 0.24, Vec3(h, p, 0), blendType='easeOut',
+                name='orbitCameraPresetHpr')
+            self._presetHprInterval.start()
+        else:
+            self.setHpr(h, p, 0)
 
     def _startMouseControlTasks(self):
         if self.mouseControl:
@@ -506,9 +593,22 @@ class OrbitalCamera(FSM, NodePath, ParamObj):
         taskMgr.remove(self.TopNodeName + "-MouseUpdate")
         taskMgr.remove(self.TopNodeName + "-AvatarFacing")
 
-    def start(self):
+    def start(self, transition=True):
+        self._transitionOnActive = transition
         if not self.isActive():
             self.request("Active")
+        else:
+            if transition and not base.camera.isEmpty():
+                targetPos = Point3(self.camOffset[0], self.camOffset[1], 10)
+                targetHpr = Vec3(0, 0, 0)
+                base.camera.wrtReparentTo(self)
+                curPos = camera.getPos(self)
+                curHpr = camera.getHpr(self)
+                if (curPos - targetPos).lengthSquared() > 0.05 or curHpr.lengthSquared() > 0.05:
+                    if hasattr(self, '_returnInterval') and self._returnInterval:
+                        self._returnInterval.pause()
+                    self._returnInterval = LerpPosHprInterval(camera, 0.35, targetPos, targetHpr, startPos=curPos, startHpr=curHpr, blendType='easeOut', name='orbitalCameraReturn')
+                    self._returnInterval.start()
 
     def stop(self):
         if self.isActive():

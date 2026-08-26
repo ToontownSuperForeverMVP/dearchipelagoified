@@ -107,8 +107,8 @@ def getRideElevatorInterval(type = ELEVATOR_NORMAL):
      ELEVATOR_CJ,
      ELEVATOR_BB):
         base.camLens.setFov(ToontownGlobals.CogHQCameraFov)
-        ival = Sequence(Wait(0.5), LerpPosInterval(camera, 0.5, Point3(0, yValue, zMin), startPos=Point3(0, yValue, zMid), blendType='easeOut'), LerpPosInterval(camera, 0.5, Point3(0, yValue, zMid), startPos=Point3(0, yValue, zMin)), Wait(1.0), LerpPosInterval(camera, 0.5, Point3(0, yValue, zMax), startPos=Point3(0, yValue, zMid), blendType='easeOut'), LerpPosInterval(camera, 1.0, Point3(0, yValue, zMid), startPos=Point3(0, yValue, zMax)))
+        ival = Sequence(Wait(0.5), LerpPosInterval(camera, 0.5, Point3(0, yValue, zMin), startPos=Point3(0, yValue, zMid), blendType='easeInOut'), LerpPosInterval(camera, 0.5, Point3(0, yValue, zMid), startPos=Point3(0, yValue, zMin), blendType='easeInOut'), Wait(1.0), LerpPosInterval(camera, 0.5, Point3(0, yValue, zMax), startPos=Point3(0, yValue, zMid), blendType='easeInOut'), LerpPosInterval(camera, 1.0, Point3(0, yValue, zMid), startPos=Point3(0, yValue, zMax), blendType='easeInOut'))
     else:
         base.camLens.setFov(ToontownGlobals.DefaultCameraFov)
-        ival = Sequence(Wait(0.5), LerpPosInterval(camera, 0.5, Point3(0, 14, 3.8), startPos=Point3(0, 14, 4), blendType='easeOut'), LerpPosInterval(camera, 0.5, Point3(0, 14, 4), startPos=Point3(0, 14, 3.8)), Wait(1.0), LerpPosInterval(camera, 0.5, Point3(0, 14, 4.2), startPos=Point3(0, 14, 4), blendType='easeOut'), LerpPosInterval(camera, 1.0, Point3(0, 14, 4), startPos=Point3(0, 14, 4.2)))
+        ival = Sequence(Wait(0.5), LerpPosInterval(camera, 0.5, Point3(0, 14, 3.8), startPos=Point3(0, 14, 4), blendType='easeInOut'), LerpPosInterval(camera, 0.5, Point3(0, 14, 4), startPos=Point3(0, 14, 3.8), blendType='easeInOut'), Wait(1.0), LerpPosInterval(camera, 0.5, Point3(0, 14, 4.2), startPos=Point3(0, 14, 4), blendType='easeInOut'), LerpPosInterval(camera, 1.0, Point3(0, 14, 4), startPos=Point3(0, 14, 4.2), blendType='easeInOut'))
     return ival

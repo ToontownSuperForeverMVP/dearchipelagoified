@@ -130,7 +130,7 @@ class DistributedNPCTailor(DistributedNPCToonBase):
             self.setupAvatars(self.av)
             if self.isLocalToon:
                 camera.wrtReparentTo(render)
-                self.cameraLerp = LerpPosQuatInterval(camera, 1, Point3(-5, 9, self.getHeight() - 0.5), Point3(-150, -2, 0), other=self, blendType='easeOut', name=self.uniqueName('lerpCamera'))
+                self.cameraLerp = LerpPosQuatInterval(camera, 1, Point3(-5, 9, self.getHeight() - 0.5), Point3(-150, -2, 0), other=self, blendType='easeInOut', name=self.uniqueName('lerpCamera'))
                 self.cameraLerp.start()
             if self.browsing == 0:
                 if self.roomAvailable == 0:
@@ -188,7 +188,7 @@ class DistributedNPCTailor(DistributedNPCToonBase):
         else:
             self.button = None
         self.cancelButton = DirectButton(relief=None, image=(self.gui.find('**/CrtAtoon_Btn2_UP'), self.gui.find('**/CrtAtoon_Btn2_DOWN'), self.gui.find('**/CrtAtoon_Btn2_RLLVR')), pos=(0.15, 0, -0.85), command=self.__handleCancel, text=('', TTLocalizer.MakeAToonCancel, TTLocalizer.MakeAToonCancel), text_font=ToontownGlobals.getInterfaceFont(), text_scale=0.08, text_pos=(0, -0.03), text_fg=(1, 1, 1, 1), text_shadow=(0, 0, 0, 1))
-        camera.setPosHpr(base.localAvatar, -4.16, 8.25, 2.47, -152.89, 0.0, 0.0)
+        LerpPosHprInterval(camera, 0.5, Point3(-4.16, 8.25, 2.47), Point3(-152.89, 0.0, 0.0), other=base.localAvatar, blendType='easeInOut').start()
         self.counter = render.find('**/*mo1_TI_counter')
         self.counter.hide()
         self.hide()

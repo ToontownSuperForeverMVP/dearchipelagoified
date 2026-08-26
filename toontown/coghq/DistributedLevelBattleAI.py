@@ -74,6 +74,7 @@ class DistributedLevelBattleAI(DistributedBattleAI.DistributedBattleAI):
 
             self.d_setMembers()
             self.storeSuitsKilledThisBattle()
+            self.rewardCogGalleryForBattle()
             if self.bossBattle == 0:
                 self.b_setState('Reward')
             else:
@@ -96,6 +97,23 @@ class DistributedLevelBattleAI(DistributedBattleAI.DistributedBattleAI):
 
     def handleToonsWon(self, toons):
         pass
+
+    def rewardCogGalleryForBattle(self):
+        for toonId in self.activeToons:
+            toon = self.getToon(toonId)
+            if not toon:
+                continue
+
+            if self.air.config.GetBool('battle-passing-no-credit', True):
+                if toonId not in self.helpfulToons:
+                    continue
+
+            self.air.cogPageManager.toonKilledCogs(toon, self.suitsKilledThisBattle, self.getTaskZoneId())
+
+    def assignRewards(self):
+        # Facility cog checks are credited after each encounter. The final
+        # aggregate payout must not credit the same Cog Gallery kills again.
+        DistributedBattleAI.DistributedBattleAI.assignRewards(self, awardCogGallery=False)
 
     def enterFaceOff(self):
         self.notify.debug('DistributedLevelBattleAI.enterFaceOff()')

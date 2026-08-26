@@ -834,8 +834,10 @@ class DistributedBattleBase(DistributedNode.DistributedNode, BattleBase):
 
             camTrack.append(Func(setCamFov, self.camFov))
             camTrack.append(Func(camera.wrtReparentTo, self))
-            camTrack.append(Func(camera.setPos, self.camJoinPos))
-            camTrack.append(Func(camera.setHpr, self.camJoinHpr))
+            camTrack.append(LerpPosHprInterval(
+                camera, 0.4, self.camJoinPos, self.camJoinHpr,
+                other=self, blendType='easeInOut',
+                name=self.uniqueBattleName('toonJoinCameraTween')))
             return Parallel(joinTrack, camTrack, name=name)
         else:
             return Sequence(joinTrack, name=name)
@@ -1314,8 +1316,8 @@ class DistributedBattleBase(DistributedNode.DistributedNode, BattleBase):
             stateName = place.fsm.getCurrentState().getName()
         if stateName == 'died':
             self.movie.reset()
-            camera.reparentTo(render)
-            camera.setPosHpr(localAvatar, 5.2, 5.45, localAvatar.getHeight() * 0.66, 131.5, 3.6, 0)
+            camera.wrtReparentTo(render)
+            LerpPosHprInterval(camera, 0.45, Point3(5.2, 5.45, localAvatar.getHeight() * 0.66), Point3(131.5, 3.6, 0), other=localAvatar, blendType='easeOut').start()
         else:
             messenger.send('localToonLeftBattle')
         base.camLens.setMinFov(ToontownGlobals.DefaultCameraFov / (4. / 3.))

@@ -726,7 +726,32 @@ class DistributedBuilding(DistributedObject.DistributedObject):
         return
 
     def walkOutCameraTrack(self):
-        track = Sequence(Func(camera.reparentTo, render), Func(camera.setPosHpr, self.elevatorNodePath, 0, -32.5, 9.4, 0, 348, 0), Func(base.camLens.setMinFov, 52.0 / (4. / 3.)), Wait(VICTORY_RUN_TIME), Func(camera.setPosHpr, self.elevatorNodePath, 0, -32.5, 17, 0, 347, 0), Func(base.camLens.setMinFov, 75.0 / (4. / 3.)), Wait(TO_TOON_BLDG_TIME), Func(base.camLens.setMinFov, 52.0 / (4. / 3.)))
+        # Keep the familiar wide reveal, but crane up to the building instead of
+        # cutting there on the frame the victory run ends.
+        craneTime = min(0.9, VICTORY_RUN_TIME * 0.35)
+        track = Sequence(
+            Func(camera.reparentTo, render),
+            Func(camera.setPosHpr, self.elevatorNodePath,
+                 0, -32.5, 9.4, 0, 348, 0),
+            Func(base.camLens.setMinFov, 52.0 / (4. / 3.)),
+            Wait(max(0.0, VICTORY_RUN_TIME - craneTime)),
+            Parallel(
+                LerpPosHprInterval(
+                    camera, craneTime,
+                    Point3(0, -32.5, 17), Point3(0, 347, 0),
+                    other=self.elevatorNodePath, blendType='easeInOut',
+                    name=self.taskName('victoryCameraCrane')),
+                LerpFunctionInterval(
+                    base.camLens.setMinFov,
+                    fromData=52.0 / (4. / 3.),
+                    toData=75.0 / (4. / 3.), duration=craneTime,
+                    blendType='easeInOut')),
+            Wait(max(0.0, TO_TOON_BLDG_TIME - 0.45)),
+            LerpFunctionInterval(
+                base.camLens.setMinFov,
+                fromData=75.0 / (4. / 3.),
+                toData=52.0 / (4. / 3.), duration=0.45,
+                blendType='easeInOut'))
         return track
 
     def plantVictorsOutsideBldg(self):

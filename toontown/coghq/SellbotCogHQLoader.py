@@ -159,11 +159,23 @@ class SellbotCogHQLoader(CogHQLoader.CogHQLoader):
         Toon.unloadSellbotHQAnims()
 
     def enterFactoryExterior(self, requestStatus):
+        try:
+            from toontown.hood import OutdoorLighting, ZoneUtil
+            zoneId = ZoneUtil.getCanonicalZoneId(requestStatus.get('zoneId'))
+            OutdoorLighting.begin(getattr(self, 'geom', None),
+                                  hoodId=self.hood.hoodId, zoneId=zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start outdoor lighting: %s' % error)
         self.placeClass = FactoryExterior.FactoryExterior
         self.enterPlace(requestStatus)
         self.hood.spawnTitleText(requestStatus['zoneId'])
 
     def exitFactoryExterior(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(getattr(self, 'geom', None))
+        except Exception:
+            pass
         taskMgr.remove('titleText')
         self.hood.hideTitleText()
         self.exitPlace()
@@ -186,9 +198,23 @@ class SellbotCogHQLoader(CogHQLoader.CogHQLoader):
         self.placeClass = self.getFactoryInteriorPlaceClass(factoryType)
         if self.placeClass is None:
             raise Exception(f"Factory type: {factoryType} is an invalid factory type for factory interior!")
+        try:
+            from toontown.hood import OutdoorLighting
+            # Factory rooms are distributed after the place starts, so the
+            # outdoor rig is rooted at render and remains available as rooms
+            # stream in.  The fixed factory profile supplies its industrial
+            # colors without advancing the outdoor day/night clock.
+            OutdoorLighting.begin(None, style='factory_int', zoneId=factoryType)
+        except Exception as error:
+            self.notify.warning('Unable to start factory lighting: %s' % error)
         self.enterPlace(requestStatus)
 
     def __doExitFactoryInterior(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         self.exitPlace()
         self.placeClass = None
         return

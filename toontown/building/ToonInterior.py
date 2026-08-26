@@ -87,6 +87,11 @@ class ToonInterior(Place.Place):
 
     def enter(self, requestStatus):
         self.zoneId = requestStatus['zoneId']
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(None, style='toon', zoneId=self.zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start Toon interior lighting: %s' % error)
         self.fsm.enterInitialState()
         messenger.send('enterToonInterior')
         self.accept('doorDoneEvent', self.handleDoorDoneEvent)
@@ -103,6 +108,11 @@ class ToonInterior(Place.Place):
         self.fsm.request(requestStatus['how'], [requestStatus])
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         self.ignoreAll()
         messenger.send('exitToonInterior')
         self._telemLimiter.destroy()

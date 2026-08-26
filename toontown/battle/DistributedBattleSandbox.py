@@ -195,14 +195,26 @@ class DistributedBattleSandbox(DistributedBattle):
         TauntCamY = 18
         TauntCamX = 0
         TauntCamHeight = random.choice((MidTauntCamHeight, 1, 11))
-        camTrack.append(Func(camera.setPos, TauntCamX, TauntCamY, TauntCamHeight))
-        camTrack.append(Func(camera.lookAt, suitLeader, suitOffsetPnt))
-        camTrack.append(Wait(delay))
+        tauntCamTarget = suitLeader.attachNewNode('sandboxFaceOffCameraTarget')
+        tauntCamTarget.setPos(TauntCamX, TauntCamY, TauntCamHeight)
+        tauntCamTarget.lookAt(suitLeader, suitOffsetPnt)
+        tauntCamHpr = tauntCamTarget.getHpr(suitLeader)
+        tauntCamTarget.removeNode()
+        closeTweenTime = min(0.65, delay * 0.35)
+        camTrack.append(LerpPosHprInterval(
+            camera, closeTweenTime,
+            Point3(TauntCamX, TauntCamY, TauntCamHeight), tauntCamHpr,
+            other=suitLeader, blendType='easeInOut',
+            name=self.uniqueBattleName('sandboxFaceOffCloseTween')))
+        camTrack.append(Wait(max(0.0, delay - closeTweenTime)))
         camPos = Point3(0, -6, 4)
         camHpr = Vec3(0, 0, 0)
-        camTrack.append(Func(camera.reparentTo, base.localAvatar))
+        camTrack.append(Func(camera.wrtReparentTo, base.localAvatar))
         camTrack.append(Func(setCamFov, ToontownGlobals.DefaultCameraFov))
-        camTrack.append(Func(camera.setPosHpr, camPos, camHpr))
+        camTrack.append(LerpPosHprInterval(
+            camera, 0.45, camPos, camHpr, other=base.localAvatar,
+            blendType='easeInOut',
+            name=self.uniqueBattleName('sandboxFaceOffReturnTween')))
         mtrack = Parallel(suitTrack, toonTrack, camTrack)
         done = Func(callback)
         track = Sequence(mtrack, done, name=name)

@@ -18,9 +18,19 @@ class CashbotHQBossBattle(CogHQBossBattle.CogHQBossBattle):
         CogHQBossBattle.CogHQBossBattle.unload(self)
 
     def enter(self, requestStatus):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(None, style='cashbot_hq', zoneId=self.zoneId)
+        except Exception:
+            pass
         CogHQBossBattle.CogHQBossBattle.enter(self, requestStatus, DistributedCashbotBoss.OneBossCog)
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         CogHQBossBattle.CogHQBossBattle.exit(self)
 
     def exitCrane(self):

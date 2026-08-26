@@ -154,7 +154,6 @@ class DistributedBattleBldgAI(DistributedBattleBaseAI.DistributedBattleBaseAI):
         # Revive dead toons to 1 laff
         self.reviveDeadToons()
         self.timer.startCallback(FLOOR_REWARD_TIMEOUT, self.serverRewardDone)
-        self.rewardFloorCleared()
         return None
 
     def exitReward(self):
@@ -165,7 +164,7 @@ class DistributedBattleBldgAI(DistributedBattleBaseAI.DistributedBattleBaseAI):
         self.resetResponses()
         self.assignRewards()
         self.handleBuildingQuests()
-        self.rewardFloorCleared()
+        self.rewardBuildingCompleted()
         self.timer.startCallback(BUILDING_REWARD_TIMEOUT, self.serverRewardDone)
         return None
 
@@ -187,6 +186,8 @@ class DistributedBattleBldgAI(DistributedBattleBaseAI.DistributedBattleBaseAI):
                 toon = self.getToon(t)
                 if toon:
                     toon.addCheckedLocations([self.floorCheckLocation])
+
+    def rewardBuildingCompleted(self):
         checks = [self.getBuildingSuitCheck(), self.getBuildingHoodCheck()]
         for t in self.activeToons:
             toon = self.getToon(t)

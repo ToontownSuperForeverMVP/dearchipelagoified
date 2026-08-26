@@ -2,6 +2,7 @@ from direct.directnotify import DirectNotifyGlobal
 from direct.fsm import ClassicFSM, State
 from direct.fsm import State
 from panda3d.core import *
+from direct.gui.DirectGui import DirectButton
 from otp.avatar import Avatar
 from toontown.hood import ZoneUtil
 from toontown.launcher import DownloadForceAcknowledge
@@ -134,6 +135,7 @@ class OZSafeZoneLoader(SafeZoneLoader):
         return task.done
 
     def restoreLocal(self, task = None):
+        self.__hideSkipGeyserButton()
         place = base.cr.playGame.getPlace()
         if place:
             place.fsm.request('walk')
@@ -226,11 +228,12 @@ class OZSafeZoneLoader(SafeZoneLoader):
                     cameraArm.setPos(0.0, -23.0, 3.0)
                     camPosStart = Point3(0.0, 0.0, 0.0)
                     camHprStart = Vec3(0.0, 0.0, 0.0)
-                    self.changeCamera(cameraArm, camPosStart, camHprStart)
+                    self.changeCamera(cameraArm, camPosStart, camHprStart, duration=0.6)
                     cameraTrack = Sequence()
-                    cameraTrack.append(Wait(11.0 * time))
-                    cameraTrack.append(Func(self.changeCamera, camParentOriginal, camPosOriginal, camHprOriginal))
+                    cameraTrack.append(Wait(10.4 * time))
+                    cameraTrack.append(Func(self.changeCamera, camParentOriginal, camPosOriginal, camHprOriginal, 0.6))
                     cameraTrack.start()
+                    self.__showSkipGeyserButton(topTrack, cameraTrack)
                 moveTrack = Sequence()
                 moveTrack.append(Wait(0.5))
                 moveTrack.append(LerpPosInterval(holder, 3.0 * time, pos=upToon, startPos=downToon, blendType='easeOut'))
@@ -270,15 +273,53 @@ class OZSafeZoneLoader(SafeZoneLoader):
         else:
             self.geyserSoundNoToonInterval.start()
 
-    def changeCamera(self, newParent, newPos, newHpr):
-        camera.reparentTo(newParent)
-        camera.setPosHpr(newPos, newHpr)
+    def __showSkipGeyserButton(self, localTopTrack, localCamTrack):
+        self.__hideSkipGeyserButton()
+        gui = loader.loadModel('phase_3.5/models/gui/inventory_gui.bam')
+        upButton = gui.find('**/InventoryButtonUp')
+        downButton = gui.find('**/InventoryButtonDown')
+        rolloverButton = gui.find('**/InventoryButtonRollover')
+        self.skipGeyserButton = DirectButton(parent=base.a2dBottomRight, relief=None,
+                                             pos=(-0.34, 0, 0.09), scale=(0.75, 0.75, 0.75),
+                                             text_fg=(1, 1, 1, 1), text_shadow=(0, 0, 0, 1),
+                                             text='Skip Cutscene', text_scale=(0.07, 0.07),
+                                             text_pos=(-0.005, -0.01), image=(upButton, downButton, rolloverButton, upButton),
+                                             image_color=(0.66274509803, 0.66274509803, 0.66274509803, 1),
+                                             image_scale=(5, 1, 2),
+                                             command=lambda: self.__handleSkipGeyser(localTopTrack, localCamTrack))
+        gui.removeNode()
+
+    def __hideSkipGeyserButton(self):
+        if hasattr(self, 'skipGeyserButton') and self.skipGeyserButton:
+            self.skipGeyserButton.destroy()
+            self.skipGeyserButton = None
+
+    def __handleSkipGeyser(self, localTopTrack, localCamTrack):
+        self.__hideSkipGeyserButton()
+        rate = 4.0
+        if hasattr(self, 'geyserTrack') and self.geyserTrack and self.geyserTrack.isPlaying():
+            self.geyserTrack.setPlayRate(rate)
+        if localTopTrack and localTopTrack.isPlaying():
+            localTopTrack.setPlayRate(rate)
+        if localCamTrack and localCamTrack.isPlaying():
+            localCamTrack.setPlayRate(rate)
+        if hasattr(self, 'geyserSoundInterval') and self.geyserSoundInterval and self.geyserSoundInterval.isPlaying():
+            self.geyserSoundInterval.setPlayRate(rate)
+
+    def changeCamera(self, newParent, newPos, newHpr, duration = 0.6):
+        if not camera.isEmpty():
+            camera.wrtReparentTo(newParent)
+            if duration > 0:
+                LerpPosHprInterval(camera, duration, newPos, newHpr, other=newParent, blendType='easeInOut').start()
+            else:
+                camera.setPosHpr(newPos, newHpr)
 
     def doPrint(self, thing):
         return 0
         print(thing)
 
     def unload(self):
+        self.__hideSkipGeyserButton()
         del self.birdSound
         SafeZoneLoader.unload(self)
         self.done = 1

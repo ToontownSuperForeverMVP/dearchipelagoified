@@ -57,9 +57,19 @@ class SuitInterior(Place.Place):
         self.fsm.enterInitialState()
         self._telemLimiter = TLGatherAllAvs('SuitInterior', RotationLimitToH)
         self.zoneId = requestStatus['zoneId']
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(None, style='cog', zoneId=self.zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start Cog building lighting: %s' % error)
         self.accept('DSIDoneEvent', self.handleDSIDoneEvent)
 
     def exit(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         self.ignoreAll()
         self._telemLimiter.destroy()
         del self._telemLimiter

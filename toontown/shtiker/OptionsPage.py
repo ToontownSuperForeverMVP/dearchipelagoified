@@ -37,6 +37,7 @@ OptionToType = {
     'fovEffects': OptionTypes.BUTTON,
     'cam-toggle-lock': OptionTypes.BUTTON,
     'boss-alerts': OptionTypes.BUTTON,
+    'bk-warning': OptionTypes.BUTTON,
     'speedchat-style': OptionTypes.BUTTON_SPEEDCHAT,
     'discord-rich-presence': OptionTypes.BUTTON,
     'archipelago-textsize': OptionTypes.SLIDER,
@@ -59,6 +60,29 @@ OptionToType = {
     "anti-aliasing": OptionTypes.DROPDOWN,
     "frame-rate-meter": OptionTypes.BUTTON,
     "fps-limit": OptionTypes.DROPDOWN,
+    "dynamic-shadows": OptionTypes.BUTTON,
+    "shadow-quality": OptionTypes.DROPDOWN,
+    "lighting-experimental-world-shadows": OptionTypes.BUTTON,
+    "drop-shadow-strength": OptionTypes.SLIDER,
+    "want-procedural-sky": OptionTypes.BUTTON,
+    "sky-cloud-quality": OptionTypes.DROPDOWN,
+    "lighting-bloom-enabled": OptionTypes.BUTTON,
+    "lighting-god-rays": OptionTypes.BUTTON,
+    "lighting-fog-enabled": OptionTypes.BUTTON,
+    "fog-density-multiplier": OptionTypes.SLIDER,
+    "lighting-intensity": OptionTypes.SLIDER,
+    "lighting-exposure": OptionTypes.SLIDER,
+    "want-day-night-cycle": OptionTypes.BUTTON,
+    "day-night-mode": OptionTypes.DROPDOWN,
+    "day-duration-minutes": OptionTypes.SLIDER,
+    "night-duration-minutes": OptionTypes.SLIDER,
+    "want-aurora-borealis": OptionTypes.BUTTON,
+    "lighting-contact-shadows": OptionTypes.BUTTON,
+    "lighting-streetlamps-enabled": OptionTypes.BUTTON,
+    "lighting-tonemap-mode": OptionTypes.DROPDOWN,
+    "want-water-reflections": OptionTypes.BUTTON,
+    "motion-blur": OptionTypes.BUTTON,
+    "motion-blur-strength": OptionTypes.SLIDER,
 
     # Audio
     "music": OptionTypes.BUTTON,
@@ -152,6 +176,7 @@ class OptionsTabPage(DirectFrame, FSM):
             'fovEffects',
             'cam-toggle-lock',
             'boss-alerts',
+            'bk-warning',
             'speedchat-style',
             'discord-rich-presence',
             'archipelago-textsize',
@@ -168,6 +193,18 @@ class OptionsTabPage(DirectFrame, FSM):
         "Video": [
             "borderless", "resolution", "vertical-sync", "anisotropic-filter",
             "anti-aliasing", "frame-rate-meter", "fps-limit",
+            "dynamic-shadows", "shadow-quality", "drop-shadow-strength",
+            "lighting-experimental-world-shadows",
+            "lighting-contact-shadows", "lighting-streetlamps-enabled",
+            "want-procedural-sky", "sky-cloud-quality", "want-aurora-borealis",
+            "lighting-bloom-enabled", "lighting-god-rays",
+            "lighting-fog-enabled", "fog-density-multiplier",
+            "lighting-intensity", "lighting-exposure", "lighting-tonemap-mode",
+            "want-day-night-cycle", "day-night-mode",
+            "day-duration-minutes", "night-duration-minutes",
+            "want-water-reflections",
+            "motion-blur",
+            "motion-blur-strength",
         ],
         "Audio": [
             "music", "sfx", "music-volume", "sfx-volume", "toon-chat-sounds",
@@ -400,38 +437,61 @@ class OptionsScrolledFrame(ToontownScrolledFrame):
 
 
 class DropdownScrolledFrame(ToontownScrolledFrame):
-    width = 0.3
+    width = 0.35
     height = 0.3
     offset = 0.225
 
-    def __init__(self, optionName: str, parent=None, pos=(0, 0, 0), options: list[str] = None, command=None, **kw
+    def __init__(self, optionName: str, parent=None, pos=(0, 0, 0), options: list[str] = None, command=None, cancelCommand=None, **kw
                  ) -> None:
+        targetX = pos[0]
+        targetZ = pos[2] - self.offset
+        if targetZ - self.height < -0.55:
+            targetZ = pos[2] + self.offset
+        if targetZ - self.height < -0.55:
+            targetZ = -0.55 + self.height
+        if targetZ + self.height > 0.55:
+            targetZ = 0.55 - self.height
+
+        if parent is None:
+            parent = aspect2d
+
         super().__init__(
             parent, relief=None,
-            pos=(pos[0], pos[1], pos[2] - self.offset),
+            pos=(targetX, pos[1], targetZ),
             canvasSize=(-self.width, self.width, -self.height, self.height),
             frameSize=(-self.width, self.width, -self.height, self.height),
             **kw
         )
         self.initialiseoptions(DropdownScrolledFrame)
+        self.reparentTo(parent, DGG.NO_FADE_SORT_INDEX)
 
         self.optionName = optionName
         self.optionNames = options or []
+        self.cancelCommand = cancelCommand
 
         gui = base.loader.loadModel("phase_3/models/gui/quit_button")
+
+        self.cancelButton = DirectButton(
+            parent=parent,
+            relief=None,
+            frameSize=(-2.0, 2.0, -2.0, 2.0),
+            command=self._cancel,
+        )
+        self.cancelButton.reparentTo(parent, DGG.FADE_SORT_INDEX + 10)
+        self.cancelButton.setBin('gui-popup', 4990)
 
         self.optionElements = []
         for index, option in enumerate(self.optionNames):
             element = DirectButton(
                 parent=self.getCanvas(), relief=None, pos=(0, 0, self.offset - (index * 0.1)),
                 text=self.formatSetting(option),
-                text_scale=0.052, image_pos=(0, 0, 0.02),
+                text_scale=0.048, image_pos=(0, 0, 0.02),
                 image=(
                     gui.find("**/QuitBtn_UP"),
                     gui.find("**/QuitBtn_DN"),
                     gui.find("**/QuitBtn_RLVR"),
                 ),
-                image_scale=(0.7, 1, 1),
+                image_scale=(0.75, 1, 1),
                 command=command, extraArgs=[option]
             )
             self.bindToScroll(element)
@@ -441,13 +501,18 @@ class DropdownScrolledFrame(ToontownScrolledFrame):
 
         optionAmt = len(self.optionElements)
 
-        # Update the scrollbar if there are more than x elements.
         canvasHeight = ((optionAmt * 0.1) - self.height) if optionAmt > 4 else self.height
 
         self["canvasSize"] = (-self.width, self.width, -canvasHeight, self.height)
         self.setCanvasSize()
 
         base.transitions.fadeScreen(0.5)
+
+    def _cancel(self) -> None:
+        if self.cancelCommand:
+            self.cancelCommand()
+        else:
+            self.destroy()
 
     def formatSetting(self, setting: Setting) -> str:
         """Given the type of setting we're dealing with, handle
@@ -477,6 +542,10 @@ class DropdownScrolledFrame(ToontownScrolledFrame):
         return str(setting)
 
     def destroy(self) -> None:
+        if hasattr(self, "cancelButton") and self.cancelButton:
+            self.cancelButton.destroy()
+            self.cancelButton = None
+
         if hasattr(self, "optionElements"):
             for option in self.optionElements:
                 option.destroy()
@@ -514,8 +583,22 @@ class OptionElement(DirectFrame):
         "anisotropic-filter": list(TTLocalizer.OptionAnisotropic),
         "anti-aliasing": list(TTLocalizer.OptionAntiAlias),
         "fps-limit": list(TTLocalizer.OptionFPSLimit),
-        "battle-speed": list(TTLocalizer.OptionBattleSpeed)
+        "battle-speed": list(TTLocalizer.OptionBattleSpeed),
+        "shadow-quality": ["off", "low", "medium", "high"],
+        "sky-cloud-quality": ["off", "low", "medium", "high"],
+        "day-night-mode": list(TTLocalizer.OptionDayNightMode),
+        "lighting-tonemap-mode": list(TTLocalizer.OptionTonemapMode),
     })
+
+    sliderRanges = {
+        "drop-shadow-strength": (0.15, 0.75),
+        "fog-density-multiplier": (0.25, 1.50),
+        "lighting-intensity": (0.50, 1.50),
+        "lighting-exposure": (0.50, 2.00),
+        "day-duration-minutes": (1.0, 30.0),
+        "night-duration-minutes": (1.0, 20.0),
+        "motion-blur-strength": (0.10, 2.00),
+    }
 
     def __init__(self, page, parent, name: str, index: int, gui, **kw):
         super().__init__(parent, **kw)
@@ -587,12 +670,20 @@ class OptionElement(DirectFrame):
                     gui.find("**/QuitBtn_RLVR"),
                 ),
                 value=currSetting,
+                range=self.sliderRanges.get(self.optionName, (0.0, 1.0)),
                 command=self._updateSliderOption,
             )
 
+            if self.optionName in ("day-duration-minutes", "night-duration-minutes"):
+                labelText = f"{round(currSetting, 1)}m"
+            elif self.optionName in ("fog-density-multiplier", "lighting-intensity", "lighting-exposure", "motion-blur-strength"):
+                labelText = f"{round(currSetting * 100)}%"
+            else:
+                labelText = str(round(currSetting * 100))
+
             self.sliderLabel = DirectLabel(
                 parent=self.optionModifier, relief=None, pos=(0.3, 0, -0.01),
-                text=str(round(currSetting * 100)), text_scale=0.052,
+                text=labelText, text_scale=0.052,
             )
         else:
             raise Exception(f"Undefined option type: {self.optionType}")
@@ -603,6 +694,10 @@ class OptionElement(DirectFrame):
         self.doneRegisterKey()
 
         self.ignore("controls_findDuplicates")
+
+        if hasattr(self, "dropdownFrame") and self.dropdownFrame is not None:
+            self.dropdownFrame.destroy()
+            self.dropdownFrame = None
 
         if hasattr(self, "sliderLabel"):
             self.sliderLabel.destroy()
@@ -651,6 +746,9 @@ class OptionElement(DirectFrame):
             if self.optionName == "battle-speed":
                 return TTLocalizer.OptionBattleSpeed[setting]
 
+        if self.optionName in ("shadow-quality", "sky-cloud-quality"):
+            return str(setting).title()
+
         return str(setting)
 
     def registerKey(self, keybind: str) -> None:
@@ -686,17 +784,22 @@ class OptionElement(DirectFrame):
         self.optionModifier["image_color"] = Vec4(1, 1, 1, 1)
 
     def _openDropdown(self) -> None:
+        buttonPos = self.optionModifier.getPos(aspect2d)
         self.dropdownFrame = DropdownScrolledFrame(
-            self.optionName, parent=self.page, pos=self.optionModifier.getPos(),
+            self.optionName, parent=aspect2d, pos=buttonPos,
             options=self.optionOptions[self.optionName],
-            command=self._updateDropdownOption
+            command=self._updateDropdownOption,
+            cancelCommand=self._closeDropdown,
         )
         self.dropdownFrame.setBin('gui-popup', 5000)
 
-    def _updateDropdownOption(self, newSetting) -> None:
+    def _closeDropdown(self) -> None:
         if self.dropdownFrame is not None:
             self.dropdownFrame.destroy()
             self.dropdownFrame = None
+
+    def _updateDropdownOption(self, newSetting) -> None:
+        self._closeDropdown()
 
         # Update the new setting.
         base.settings.set(self.optionName, newSetting)
@@ -709,6 +812,9 @@ class OptionElement(DirectFrame):
                 globalClock.setFrameRate(newSetting)
             else:
                 globalClock.setMode(ClockObject.MNormal)
+
+        if self.optionName in ("shadow-quality", "sky-cloud-quality", "day-night-mode", "lighting-tonemap-mode"):
+            self._scheduleOutdoorRefresh()
 
         # Update the button text with the new setting.
         self.optionModifier["text"] = self.formatSetting(newSetting)
@@ -815,6 +921,16 @@ class OptionElement(DirectFrame):
         elif self.optionName == "new-popup":
             base.newPopup = newSetting
 
+        if self.optionName in {
+                "dynamic-shadows", "want-procedural-sky",
+                "lighting-bloom-enabled", "lighting-god-rays",
+                "lighting-fog-enabled", "want-day-night-cycle",
+                "want-water-reflections",
+            "motion-blur",
+            "motion-blur-strength", "want-aurora-borealis",
+                "lighting-contact-shadows", "lighting-streetlamps-enabled"}:
+            self._scheduleOutdoorRefresh()
+
         # Update the button text with the new setting.
         self.optionModifier["text"] = self.formatSetting(newSetting)
 
@@ -830,5 +946,38 @@ class OptionElement(DirectFrame):
             for sfm in base.sfxManagerList:
                 sfm.setVolume(newSetting ** 2)
 
-        self.sliderLabel["text"] = str(round(newSetting * 100))
+        if self.optionName in ("day-duration-minutes", "night-duration-minutes"):
+            self.sliderLabel["text"] = f"{round(newSetting, 1)}m"
+        elif self.optionName in ("fog-density-multiplier", "lighting-intensity", "lighting-exposure", "motion-blur-strength"):
+            self.sliderLabel["text"] = f"{round(newSetting * 100)}%"
+        else:
+            self.sliderLabel["text"] = str(round(newSetting * 100))
         base.settings.set(self.optionName, newSetting)
+
+        if self.optionName in {
+                "drop-shadow-strength", "fog-density-multiplier",
+                "lighting-intensity", "lighting-exposure",
+                "day-duration-minutes", "night-duration-minutes",
+                "motion-blur-strength"}:
+            self._scheduleOutdoorRefresh()
+
+    @staticmethod
+    def _scheduleOutdoorRefresh() -> None:
+        """Coalesce slider drags into one safe world-lighting refresh."""
+        taskName = "optionsPageOutdoorLightingRefresh"
+        taskMgr.remove(taskName)
+
+        def refresh(task):
+            try:
+                from toontown.hood import OutdoorLighting
+                OutdoorLighting.refreshSettings()
+            except Exception:
+                pass
+            try:
+                from toontown.hood import IndoorLighting
+                IndoorLighting.refreshSettings()
+            except Exception:
+                pass
+            return task.done
+
+        taskMgr.doMethodLater(0.20, refresh, taskName)

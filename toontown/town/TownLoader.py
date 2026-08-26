@@ -266,8 +266,18 @@ class TownLoader(StateData.StateData):
             self.zoneDict[zoneId] = groupNode
             self.nodeToZone[groupNode] = zoneId
             fadeDuration = 0.5
-            self.fadeOutDict[groupNode] = Sequence(Func(groupNode.setTransparency, 1), LerpColorScaleInterval(groupNode, fadeDuration, a0, startColorScale=a1), Func(groupNode.clearColorScale), Func(groupNode.clearTransparency), Func(groupNode.stash), name='fadeZone-' + str(zoneId), autoPause=1)
-            self.fadeInDict[groupNode] = Sequence(Func(groupNode.unstash), Func(groupNode.setTransparency, 1), LerpColorScaleInterval(groupNode, fadeDuration, a1, startColorScale=a0), Func(groupNode.clearColorScale), Func(groupNode.clearTransparency), name='fadeZone-' + str(zoneId), autoPause=1)
+            restPos = Point3(groupNode.getPos())
+            startPos = restPos + Vec3(0, 0, -10.0)
+            overshootPos = restPos + Vec3(0, 0, 1.15)
+            riseTrack = Sequence(
+                LerpPosInterval(groupNode, fadeDuration * 0.76,
+                                overshootPos, startPos=startPos,
+                                blendType='easeOut'),
+                LerpPosInterval(groupNode, fadeDuration * 0.24,
+                                restPos, startPos=overshootPos,
+                                blendType='easeInOut'))
+            self.fadeOutDict[groupNode] = Sequence(Func(groupNode.setTransparency, 1), LerpColorScaleInterval(groupNode, fadeDuration, a0, startColorScale=a1), Func(groupNode.setPos, restPos), Func(groupNode.clearColorScale), Func(groupNode.clearTransparency), Func(groupNode.stash), name='fadeOutZone-' + str(zoneId), autoPause=1)
+            self.fadeInDict[groupNode] = Sequence(Func(groupNode.unstash), Func(groupNode.setTransparency, 1), Parallel(LerpColorScaleInterval(groupNode, fadeDuration, a1, startColorScale=a0), riseTrack), Func(groupNode.setPos, restPos), Func(groupNode.clearColorScale), Func(groupNode.clearTransparency), name='fadeInZone-' + str(zoneId), autoPause=1)
 
         for i in range(numVisGroups):
             groupFullName = dnaStore.getDNAVisGroupName(i)

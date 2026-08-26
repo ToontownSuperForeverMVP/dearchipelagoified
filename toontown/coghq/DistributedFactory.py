@@ -95,6 +95,11 @@ class DistributedFactory(DistributedLevel.DistributedLevel, FactoryBase.FactoryB
         modelCount = len(levelSpec.getAllEntIds())
         loader.beginBulkLoad('factory', TTLocalizer.HeadingToFactoryTitle % TTLocalizer.FactoryNames[self.factoryId], modelCount, 1, TTLocalizer.TIP_COGHQ)
         DistributedLevel.DistributedLevel.privGotSpec(self, levelSpec)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.shadeExtraSubtree(self.geom)
+        except Exception:
+            pass
         loader.endBulkLoad('factory')
 
         def printPos(self = self):
@@ -122,6 +127,11 @@ class DistributedFactory(DistributedLevel.DistributedLevel, FactoryBase.FactoryB
 
     def disable(self):
         self.notify.debug('disable')
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.clearExtraSubtree(getattr(self, 'geom', None))
+        except Exception:
+            pass
         base.localAvatar.setCameraCollisionsCanMove(0)
         if hasattr(self, 'suits'):
             del self.suits

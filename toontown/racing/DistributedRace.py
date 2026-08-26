@@ -160,6 +160,11 @@ class DistributedRace(DistributedObject.DistributedObject):
             del self.fog
             self.fog = None
         if self.geom is not None:
+            try:
+                from toontown.hood import OutdoorLighting
+                OutdoorLighting.end(self.geom)
+            except Exception:
+                pass
             self.geom.hide()
         base.camLens.setFar(self.oldFarPlane)
         DistributedObject.DistributedObject.disable(self)
@@ -916,6 +921,11 @@ class DistributedRace(DistributedObject.DistributedObject):
             base.loader.tick()
 
         self.geom.reparentTo(render)
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.begin(self.geom, style='gs')
+        except Exception:
+            pass
         if self.reversed:
             lapStartPos = self.geom.find('**/lap_start_rev').getPos()
         else:

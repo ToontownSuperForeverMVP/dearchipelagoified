@@ -112,10 +112,22 @@ class BossbotCogHQLoader(CogHQLoader.CogHQLoader):
         return BossbotHQBossBattle.BossbotHQBossBattle
 
     def enterFactoryExterior(self, requestStatus):
+        try:
+            from toontown.hood import OutdoorLighting, ZoneUtil
+            zoneId = ZoneUtil.getCanonicalZoneId(requestStatus.get('zoneId'))
+            OutdoorLighting.begin(getattr(self, 'geom', None),
+                                  hoodId=self.hood.hoodId, zoneId=zoneId)
+        except Exception as error:
+            self.notify.warning('Unable to start outdoor lighting: %s' % error)
         self.placeClass = BossbotOfficeExterior.BossbotOfficeExterior
         self.enterPlace(requestStatus)
 
     def exitFactoryExterior(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(getattr(self, 'geom', None))
+        except Exception:
+            pass
         taskMgr.remove('titleText')
         self.hood.hideTitleText()
         self.exitPlace()
@@ -136,9 +148,21 @@ class BossbotCogHQLoader(CogHQLoader.CogHQLoader):
         self.placeClass = CountryClubInterior.CountryClubInterior
         self.notify.info('enterCountryClubInterior, requestStatus=%s' % requestStatus)
         self.countryClubId = requestStatus['countryClubId']
+        try:
+            from toontown.hood import OutdoorLighting
+            # Start before enterPlace: DistributedCountryClub may generate and
+            # register its streamed geometry synchronously inside enterPlace.
+            OutdoorLighting.begin(None, style='golf_course')
+        except Exception as error:
+            self.notify.warning('Unable to start golf course lighting: %s' % error)
         self.enterPlace(requestStatus)
 
     def exitCountryClubInterior(self):
+        try:
+            from toontown.hood import OutdoorLighting
+            OutdoorLighting.end(None)
+        except Exception:
+            pass
         self.exitPlace()
         self.placeClass = None
         del self.countryClubId
