@@ -1,3 +1,24 @@
+# TTAP: Spicy Birthday Cake
+a fork of toontown archipelago aiming to bring QOL+ features past what TTAP offers to further enhance the experience of the game
+
+currently, this fork doesn't plan to modify the apworld logic at the moment and will work with the latest regular TTAP apworld, however that could be changed as seen fit and will run a separate apworld in case it happens
+(although, if it happens i could just branch it off from the non-custom logic version)
+
+as of now, this fork currently contains the following features;
+- BK warnings in case player is close to or out of locations left in logic, a warning will show, along with a recommended hint based on where the game will most open up from
+- customizable notification sounds for when you get an item
+- better streaming log of sent and received items, scrollable
+- a procedural sky system and outdoor lighting system, powered by the latest GLSL version
+- slightly modified panda3d to better support such system above, with the shadows off you will see a slightly higher framerate than in vanilla TTAP, in my case it is a ~5% improvement
+- smoother orbital camera and some camera cutscene optimizations
+- added a skip cutscene button to the geyser in acorn acres, to make the "ride the geyser" check quicker
+
+this fork is in a heavy work-in-progress as more features get added to it over time, i'll share progress here whenever i can
+
+i'm also willing to accept any suggestions you make, just ensure its not about apworld logic or anything that requires drawn textures (cannot draw for the sake of me, but i can code it using GLSL!), anything else goes!
+
+---------------------------------------------------------------------------------------------------------------------------------
+
 # Toontown: Archipelago
 Welcome to the repository of the Archipelago version of the Toontown!
 
