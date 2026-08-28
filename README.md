@@ -17,6 +17,8 @@ this fork is in a heavy work-in-progress as more features get added to it over t
 
 i'm also willing to accept any suggestions you make, just ensure its not about apworld logic or anything that requires drawn textures (cannot draw for the sake of me, but i can code it using GLSL!), anything else goes!
 
+AI disclosure - this project uses AI tools to manage the github and other git-related management, but doesn't touch code; everything is done by me!
+
 ---------------------------------------------------------------------------------------------------------------------------------
 
 # Toontown: Archipelago
