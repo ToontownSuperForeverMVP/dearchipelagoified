@@ -18,9 +18,16 @@ from .regions import REGION_DEFINITIONS, ToontownRegionName
 from .ruledefs import test_location, test_entrance, test_item_location
 from .fish import FishProgression, FishChecks
 import math
+import pkgutil
+import json
 
 DEBUG_MODE = False
 
+json_data = pkgutil.get_data(__name__, "archipelago.json")
+if not json_data:
+    ap_json = {"world_version" : "Error"}
+else:
+    ap_json = json.loads(json_data.decode("utf-8"))
 
 class ToontownWeb(WebWorld):
     tutorials = [Tutorial(
@@ -644,7 +651,8 @@ class ToontownWorld(World):
             self.multiworld.push_precollected(item)
 
         if self.options.flower_gardening.value or self.options.tree_gardening.value:
-            for _ in range(4):
+            kit_count = 4 if self.options.tree_gardening.value else 1
+            for _ in range(kit_count):
                 pool.append(self.create_item(ToontownItemName.GARDEN_KIT.value))
 
         if self.options.flower_gardening.value:
@@ -750,7 +758,7 @@ class ToontownWorld(World):
         return {
             "seed": self.multiworld.seed,
             "team": self.options.team.value,
-            "game_version": "v0.20.0",
+            "game_version": "v" + str(ap_json["world_version"]),
             "seed_generation_type": self.options.seed_generation_type.value,
             "starting_laff": self.options.starting_laff.value,
             "max_laff": self.options.max_laff.value,
@@ -820,7 +828,8 @@ class ToontownWorld(World):
             "damage_trap_weight": self.options.damage_trap_weight.value,
             "heal_weight": self.options.heal_weight.value,
             "fish_weight": self.options.fish_weight.value,
-            "random_prices": self.options.random_prices.value,
+            "doodle_price_rando": self.options.doodle_price_rando.value,
+            "catalog_price_rando": self.options.catalog_price_rando.value,
             "item_links": self.options.item_links.value,
             "fish_pity": self.options.fish_pity.value,
         }

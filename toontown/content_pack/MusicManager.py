@@ -1,6 +1,7 @@
 from toontown.toonbase import ToontownGlobals
 from panda3d.core import DecalEffect, VirtualFileSystem, Filename
 from direct.interval.IntervalGlobal import *
+from toontown.content_pack import MusicRandomizerSongDisplay
 import json
 import random
 import os
@@ -29,6 +30,8 @@ class MusicManager:
             self.musicJson = {"global_music": {}}
         self.musicJsonCopy = json.loads(json.dumps(self.musicJson))
         self.previousMusic = None
+        self.songDisplay = MusicRandomizerSongDisplay.MusicRandomizerSongDisplay()
+        self.songDisplay.set_default_options()
         self.currentMusic = {}
         self.currentMusicInfo = {}
         self.randomMusicInfo = {}
@@ -292,8 +295,9 @@ class MusicManager:
         if getattr(base, 'randomMusic', False):
             track_name = self._getTrackName(json_code_path)
             if getattr(base, 'localAvatar', None):
-                from libotp.nametag.WhisperGlobals import WhisperType
-                base.localAvatar.setSystemMessage(0, "Now Playing: " + track_name, whisperType=WhisperType.WTEmote)
+                self.songDisplay.display_song(song_title="Now Playing: " + str(track_name))
+                #from libotp.nametag.WhisperGlobals import WhisperType
+                #base.localAvatar.setSystemMessage(0, "Now Playing: " + track_name, whisperType=WhisperType.WTMusicPack)
 
     def _loadMusicPacks(self):
         packs_dir = "resources/music_packs"
