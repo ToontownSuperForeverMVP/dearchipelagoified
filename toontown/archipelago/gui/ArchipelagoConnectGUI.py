@@ -94,15 +94,15 @@ class ArchipelagoConnectGUI(DirectFrame):
                                             command=self.handleRinglink)
 
     def handleConnect(self):
-        base.talkAssistant.sendOpenTalk(f"~ap slot {self.slotBarEntry.get()}")
-        base.talkAssistant.sendOpenTalk(f"~ap password {self.passBarEntry.get()}")
-        base.talkAssistant.sendOpenTalk(f"~ap connect {self.ipBarEntry.get()}")
+        base.localAvatar.sendArchipelagoChat(f"!slot {self.slotBarEntry.get()}")
+        base.localAvatar.sendArchipelagoChat(f"!password {self.passBarEntry.get()}")
+        base.localAvatar.sendArchipelagoChat(f"!connect {self.ipBarEntry.get()}")
         self.toggleEntryFocus(True)
         if base.settings.get('new-popup'):
             base.localAvatar.chatMgr.mimicApButtonPressed()
 
     def handleDisconnect(self):
-        base.talkAssistant.sendOpenTalk("~ap disconnect")
+        base.localAvatar.sendArchipelagoChat("!disconnect")
         self.toggleEntryFocus(True)
 
     def handleReset(self):
@@ -110,11 +110,13 @@ class ArchipelagoConnectGUI(DirectFrame):
         self.toggleEntryFocus(True)
 
     def handleDeathlink(self):
+        # The GUI's no-argument DeathLink action has extra toggle semantics in
+        # the ~ap magic word that the raw AP chat command does not provide.
         base.talkAssistant.sendOpenTalk("~ap deathlink")
         self.toggleEntryFocus(True)
 
     def handleRinglink(self):
-        base.talkAssistant.sendOpenTalk("~ap ringlink")
+        base.localAvatar.sendArchipelagoChat("!ringlink")
         self.toggleEntryFocus(True)
 
     def entrySlot(self):

@@ -160,6 +160,7 @@ class ConnectedPacket(ClientBoundPacketBase):
         client.state = APClientEnums.CONNECTED
 
         client.av.b_setName(client.slot_name)
+        client.av.b_setArchipelagoConnected(True)
 
         # Is this this slot's first toon? If so reset the toon's stats and initialize their settings from their YAML
         if len(self.checked_locations) == 0:

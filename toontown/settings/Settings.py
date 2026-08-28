@@ -69,7 +69,22 @@ class Settings:
         'random-music': False,
         'random-music-style': 'Mix',
         "archipelago-textsize": 0.5,
-        "archipelago-log-bg": False,
+        # Unified Toon/Archipelago chat panel.  The position is stored in aspect2d
+        # coordinates so it remains stable across window resolutions.
+        "archipelago-log-bg": True,
+        "archipelago-chat-opacity": 0.82,
+        "archipelago-chat-width": 0.94,
+        "archipelago-chat-height": 0.72,
+        "archipelago-chat-theme": "Blue",
+        "archipelago-chat-timestamps": True,
+        "archipelago-chat-max-history": 250,
+        "archipelago-chat-auto-show": True,
+        "archipelago-chat-sounds": True,
+        "archipelago-chat-animations": True,
+        "archipelago-chat-snap": True,
+        "archipelago-chat-mentions": True,
+        "archipelago-chat-position-lock": False,
+        "archipelago-chat-position": [-1.24, 0.50],
         'boss-alerts': True,
         'bk-warning': True,
         # Modern outdoor rendering. Missing keys in existing settings files

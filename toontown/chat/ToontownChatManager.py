@@ -13,6 +13,8 @@ from .TTChatInputSpeedChat import TTChatInputSpeedChat
 from .TTChatInputNormal import TTChatInputNormal
 from .TTChatInputWhiteList import TTChatInputWhiteList
 from toontown.archipelago.gui import ArchipelagoConnectGUI
+from otp.speedchat import SCDecoders
+from toontown.speedchat import TTSCDecoders
 
 class HackedDirectRadioButton(DirectCheckButton):
 
@@ -97,18 +99,30 @@ class ToontownChatManager(ChatManager.ChatManager):
         del self.whisperScButton
         self.apButton.destroy()
         del self.apButton
+        self.apGui.destroy()
+        del self.apGui
         self.whisperCancelButton.destroy()
         del self.whisperCancelButton
         self.chatInputWhiteList.destroy()
         del self.chatInputWhiteList
 
+    def sendSCChatMessage(self, msgIndex, displayType=0):
+        ChatManager.ChatManager.sendSCChatMessage(self, msgIndex, displayType)
+        self._forwardSpeedChatToAP(SCDecoders.decodeSCStaticTextMsg(msgIndex))
+
+    def sendSCCustomChatMessage(self, msgIndex):
+        ChatManager.ChatManager.sendSCCustomChatMessage(self, msgIndex)
+        self._forwardSpeedChatToAP(SCDecoders.decodeSCCustomMsg(msgIndex))
+
     def sendSCResistanceChatMessage(self, textId):
         messenger.send('chatUpdateSCResistance', [textId])
         self.announceSCChat()
+        self._forwardSpeedChatToAP(TTSCDecoders.decodeTTSCResistanceMsg(textId))
 
     def sendSCSingingChatMessage(self, textId):
         messenger.send('chatUpdateSCSinging', [textId])
         self.announceSCChat()
+        self._forwardSpeedChatToAP(SCDecoders.decodeSCStaticTextMsg(textId))
 
     def sendSCSingingWhisperMessage(self, textId):
         pass
@@ -119,6 +133,15 @@ class ToontownChatManager(ChatManager.ChatManager):
          toonProgress,
          msgIndex])
         self.announceSCChat()
+        self._forwardSpeedChatToAP(TTSCDecoders.decodeTTSCToontaskMsg(taskId, toNpcId, toonProgress, msgIndex))
+
+    def _forwardSpeedChatToAP(self, message):
+        """Mirror a locally-triggered speedchat phrase into the Archipelago chat."""
+        if not message:
+            return
+        avatar = getattr(base, 'localAvatar', None)
+        if avatar is not None and hasattr(avatar, 'sendArchipelagoChat'):
+            avatar.sendArchipelagoChat(str(message))
 
     def sendSCToontaskWhisperMessage(self, taskId, toNpcId, toonProgress, msgIndex, whisperAvatarId, toPlayer):
         if toPlayer:
@@ -154,6 +177,10 @@ class ToontownChatManager(ChatManager.ChatManager):
             ChatManager.ChatManager.checkObscurred(self)
         else:
             ChatManager.ChatManager.enterMainMenu(self)
+        # Replace the legacy typed-chat box (including the chat hotkey event)
+        # with the shared Toon/AP composer.
+        self.ignore('enterNormalChat')
+        self.accept('enterNormalChat', self.__normalButtonPressed)
 
     def exitOpenChatWarning(self):
         self.openChatWarning.hide()
@@ -388,7 +415,7 @@ class ToontownChatManager(ChatManager.ChatManager):
         messenger.send('wakeup')
         if base.cr.productName in ['DisneyOnline-US', 'ES']:
             if base.cr.whiteListChatEnabled:
-                self.fsm.request('normalChat')
+                self._openUnifiedChat()
             elif not base.cr.isParentPasswordSet():
                 self.paidNoParentPassword = 1
                 self.fsm.request('unpaidChatWarning')
@@ -397,21 +424,21 @@ class ToontownChatManager(ChatManager.ChatManager):
             elif not base.localAvatar.canChat():
                 self.fsm.request('openChatWarning')
             else:
-                self.fsm.request('normalChat')
+                self._openUnifiedChat()
         elif base.cr.productName == 'Terra-DMC':
             if not base.cr.allowSecretChat():
                 self.fsm.request('noSecretChatWarning')
             elif not base.localAvatar.canChat():
                 self.fsm.request('openChatWarning')
             else:
-                self.fsm.request('normalChat')
+                self._openUnifiedChat()
         elif base.cr.productName in ['DisneyOnline-UK',
          'DisneyOnline-AP',
          'JP',
          'BR',
          'FR']:
             if base.cr.whiteListChatEnabled:
-                self.fsm.request('normalChat')
+                self._openUnifiedChat()
             elif not base.cr.isParentPasswordSet():
                 self.paidNoParentPassword = 1
                 self.fsm.request('unpaidChatWarning')
@@ -421,7 +448,7 @@ class ToontownChatManager(ChatManager.ChatManager):
             elif not base.localAvatar.canChat():
                 self.fsm.request('openChatWarning')
             else:
-                self.fsm.request('normalChat')
+                self._openUnifiedChat()
         else:
             print('ChatManager: productName: %s not recognized' % base.cr.productName)
 
@@ -435,17 +462,26 @@ class ToontownChatManager(ChatManager.ChatManager):
             self.fsm.request('speedChat')
 
     def __apButtonPressed(self):
-        if not self.apGuiToggled:
-            self.apGui.updateFields()
-            self.apGui.show()
-            self.apGuiToggled = True
-            self.apButton['text'] = "Hide Panel"
-        else:
-            self.apGui.hide()
-            self.apGuiToggled = False
-            self.apButton['text'] = ""
+        messenger.send('wakeup')
+        self.toggleArchipelagoConnectionPanel()
+
+    def requestUnifiedToonChat(self):
+        self.__normalButtonPressed()
+
+    def _openUnifiedChat(self):
+        panel = getattr(base.localAvatar, 'archipelagoLog', None)
+        if panel:
+            panel.openComposer()
+
+    def sendUnifiedToonChat(self, message):
+        message = message.strip()[:400]
+        if message:
+            base.talkAssistant.sendOpenTalk(message)
 
     def mimicApButtonPressed(self):
+        self.toggleArchipelagoConnectionPanel()
+
+    def toggleArchipelagoConnectionPanel(self):
         if not self.apGuiToggled:
             self.apGui.updateFields()
             self.apGui.show()

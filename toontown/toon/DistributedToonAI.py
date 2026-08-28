@@ -255,6 +255,7 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         self.winCondition = win_condition.NoWinCondition(self)
         self.slotName = ""
         self.archipelagoIP = "archipelago.gg:"
+        self.archipelagoConnected = False
 
     def generate(self):
         DistributedPlayerAI.DistributedPlayerAI.generate(self)
@@ -1887,6 +1888,19 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
 
     def getArchipelagoIP(self):
         return self.archipelagoIP
+
+    def b_setArchipelagoConnected(self, connected):
+        self.setArchipelagoConnected(connected)
+        self.d_setArchipelagoConnected(connected)
+
+    def d_setArchipelagoConnected(self, connected):
+        self.sendUpdate('setArchipelagoConnected', [connected])
+
+    def setArchipelagoConnected(self, connected):
+        self.archipelagoConnected = connected
+
+    def getArchipelagoConnected(self):
+        return self.archipelagoConnected
 
     def b_setTrackAccess(self, trackArray):
         self.setTrackAccess(trackArray)
@@ -4451,8 +4465,10 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         self.sendUpdateToAvatarId(self.doId, 'doTeleport', [hood])
 
     def setTalk(self, fromAV, fromAC, avatarName, chat, mods, flags):
-        if self.archipelago_session:
-            self.archipelago_session.handle_chat(chat)
+        # Toon chat is already broadcast by the setTalk DC field.  AP chat has
+        # its own sendArchipelagoChat RPC below; forwarding setTalk there made
+        # the sender's message return once as TOON and again as AP.
+        pass
 
     ### Archipelago stuff ###
 
@@ -4666,6 +4682,14 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         if not self.isPlayerControlled() or len(messages) <= 0:
             return
         self.sendUpdate('sendArchipelagoMessages', [messages])
+
+    # Received from the client's dedicated AP chat panel.  Keeping this out of
+    # setTalk prevents AP chat and commands from appearing as Toon chat.
+    def sendArchipelagoChat(self, message: str) -> None:
+        if not self.archipelago_session:
+            self.d_sendArchipelagoMessage("Archipelago is not available yet. Please try again in a moment.")
+            return
+        self.archipelago_session.handle_chat(message)
 
     # Tell this toon to display a certain AP reward, and the string to go along with it
     # The reason we provide the string here is because the client has no clue what maps things such as player

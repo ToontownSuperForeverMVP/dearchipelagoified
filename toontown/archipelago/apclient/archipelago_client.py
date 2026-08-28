@@ -306,6 +306,8 @@ class ArchipelagoClient(DirectObject):
             self.socket = None
 
         self.state = APClientEnums.DISCONNECTED
+        # Reflect the dropped connection on the player's chat header.
+        self.av.b_setArchipelagoConnected(False)
         # Ran out of data to send
         self.av.d_sendArchipelagoMessage("[AP Client Thread] Ran out of data to retrieve from server! Please use !connect to reconnect")
         self.av.d_sendArchipelagoMessage("[AP Client Thread] Terminating thread...")

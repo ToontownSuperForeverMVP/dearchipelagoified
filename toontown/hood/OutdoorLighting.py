@@ -2825,6 +2825,10 @@ _PLANE_MAX_VERTS = 128
 
 # Fog
 _fogNode: Fog | None = None
+# When False, the currently-active zone (set via begin(..., fogEnabled=False))
+# suppresses atmospheric fog entirely, even though the rest of the rig runs.
+# Go-kart races use this so track visibility is never blocked by dense fog.
+_fogEnabled = True
 
 # Sky / window
 _skyWasDimmed    = False
@@ -5114,6 +5118,9 @@ def _applyFog(spec: dict) -> None:
         return
     if not _settingsBool('lighting-fog-enabled', True):
         return
+    if not _fogEnabled:
+        _clearFog()
+        return
     fogColor = spec.get('fogColor')
     if not fogColor:
         return
@@ -6719,7 +6726,8 @@ def _applyExtraShaderState(np: NodePath) -> None:
 
 def begin(geom, style: str = 'playground',
           hoodId: int | None = None,
-          zoneId: int | None = None) -> None:
+          zoneId: int | None = None,
+          fogEnabled: bool = True) -> None:
     """Activate the outdoor lighting rig for the given geometry.
 
     Parameters
@@ -6733,9 +6741,13 @@ def begin(geom, style: str = 'playground',
     zoneId:
         Specific zone constant (e.g. SillyStreet) – used for street-level
         profiles.  Takes priority over *hoodId*.
+    fogEnabled:
+        When False, atmospheric fog is suppressed for this zone even if the
+        profile defines one (used by go-kart races).
     """
     _syncBase()
-    global _refCount, _activeStyle, _activeGeom, _lampGeomNps, _styleStack
+    global _refCount, _activeStyle, _activeGeom, _lampGeomNps, _styleStack, _fogEnabled
+    _fogEnabled = fogEnabled
     resolvedStyle = _resolveStyle(style, hoodId, zoneId)
     _styleStack.append((resolvedStyle, geom))
     oldStyle = _activeStyle
@@ -7201,7 +7213,7 @@ def _clearDefaultSpecularMaterial(np: NodePath) -> None:
 def end(geom=None) -> None:
     """Deactivate one OutdoorLighting reference and restore state on final release."""
     _syncBase()
-    global _refCount, _activeGeom, _lampGeomNps, _activeStyle, _styleStack
+    global _refCount, _activeGeom, _lampGeomNps, _activeStyle, _styleStack, _fogEnabled
     _dbg(f"end(refCount={_refCount}) geom={'ok' if (geom is not None and not geom.isEmpty()) else 'none'}")
 
     if _refCount <= 0:
@@ -7233,6 +7245,7 @@ def end(geom=None) -> None:
     _destroyPostProcess()
     _cleanupAllWater()
     _clearFog()
+    _fogEnabled = True
     _clearSkyTint()
     _restoreBackgroundColor()
     _destroyLightRig()

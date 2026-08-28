@@ -146,7 +146,12 @@ class DistributedGagTreeAI(DistributedPlantBaseAI):
             self.removeTree(avId)
             return task.done
 
-        taskMgr.doMethodLater(7, handleRemove, self.uniqueName('do-remove'))
+        # Keep this delay in sync with the dig-up removal movie (played at 5x
+        # speed on the client). Using the full 7 seconds leaves the toon locked
+        # in the garden action, unable to move, waiting for the empty plot to
+        # spawn. Match the flower removal window (3.5s) so the empty slot
+        # appears right as the toon finishes digging.
+        taskMgr.doMethodLater(3.5, handleRemove, self.uniqueName('do-remove'))
 
     def removeTree(self, avId=None):
         if not self.air:

@@ -227,6 +227,7 @@ class DistributedToon(DistributedPlayer.DistributedPlayer, Toon.Toon, Distribute
         self.winCondition = win_condition.NoWinCondition(self)
         self.slotName = ""
         self.archipelagoIP = "archipelago.gg:"
+        self.archipelagoConnected = False
         self.ConfirmedWinConditionError = False
         self.rewardHistory = []
         self.rewardTier = 0
@@ -1370,6 +1371,12 @@ class DistributedToon(DistributedPlayer.DistributedPlayer, Toon.Toon, Distribute
 
     def getArchipelagoIP(self):
         return self.archipelagoIP
+
+    def setArchipelagoConnected(self, connected):
+        self.archipelagoConnected = connected
+
+    def getArchipelagoConnected(self):
+        return self.archipelagoConnected
 
     def setBattleSpeed(self, speed):
         self.battleSpeed = speed

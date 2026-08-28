@@ -36,6 +36,7 @@ class ArchipelagoSession:
 
         self.default_ip = os.getenv("ARCHIPELAGO_IP", "127.0.0.1")
         self.connect_tried = False
+        self.ready = False
 
     def handle_connect(self, server_url: str = None):
         if server_url or not self.connect_tried:
@@ -53,6 +54,7 @@ class ArchipelagoSession:
     def handle_disconnect(self):
         if self.client.is_connected():
             self.avatar.d_setSystemMessage(0, "Disconnected from the Archipelago session.")
+        self.avatar.b_setArchipelagoConnected(False)
         self.client.team = 999
         self.client.stop()
 
@@ -118,45 +120,60 @@ class ArchipelagoSession:
         else:
             self.avatar.d_setSystemMessage(0, f"Slot data not available, try again later.")
 
+    def handle_ready(self):
+        """Mirror the stock TextClient's /ready status toggle."""
+        if not self.client.is_connected():
+            self.avatar.d_sendArchipelagoMessage(
+                "Not connected to an Archipelago session. Use /connect first.")
+            return
+        self.ready = not self.ready
+        packet = StatusUpdatePacket()
+        packet.status = ClientStatus.CLIENT_READY if self.ready else ClientStatus.CLIENT_CONNECTED
+        self.client.send_packet(packet)
+        self.avatar.d_sendArchipelagoMessage("Readied up." if self.ready else "Unreadied.")
+
     # Called from DisToonAI when this toon sends a chat message
     def handle_chat(self, message: str):
+        clean = message.strip()
+        command, _, argument = clean.partition(' ')
+        command = command.lower()
+        argument = argument.strip()
 
-        # Handle the case where they want to change their slot name
-        if message.startswith('!slot'):
-            return self.handle_slot(message.removeprefix('!slot').lstrip())
+        # Embedded-client controls are exact matches so normal server commands
+        # with similar prefixes (for example !players) are never intercepted.
+        if command == '!slot':
+            if not argument:
+                return self.avatar.d_sendArchipelagoMessage("Usage: /slot <slot name>")
+            return self.handle_slot(argument)
 
-        # Handle the case where they want to input a password
-        if message.startswith('!password'):
-            return self.handle_password(message.removeprefix('!password').lstrip())
+        if command == '!password':
+            if not argument:
+                return self.avatar.d_sendArchipelagoMessage("Usage: /password <password>")
+            return self.handle_password(argument)
 
-        # Handle the case where they are trying to connect
-        if message.startswith('!connect'):
-            # Attempt to extract an AP server URL and port
-            ip = message.removeprefix('!connect').lstrip()
-            if not ip:
-                ip = None
+        if command == '!connect':
+            return self.handle_connect(server_url=argument or None)
 
-            return self.handle_connect(server_url=ip)
+        if command == '!deathlink':
+            if not argument:
+                return self.avatar.d_sendArchipelagoMessage(
+                    "Usage: !deathlink <off|drain|one|full>")
+            return self.handle_deathlink(linktype=argument.lower())
 
-        if message.startswith('!deathlink'):
-            dlType = message.removeprefix('!deathlink').lstrip()
-            if not type:
-                dlType = None
-            return self.handle_deathlink(linktype=dlType)
-
-        if message.startswith('!ringlink'):
+        if command == '!ringlink':
             return self.handle_ringlink()
 
-        # Handle the case where they are trying to disconnect
-        if message.startswith('!disconnect'):
+        if command == '!disconnect':
             return self.handle_disconnect()
+
+        if command == '!ready':
+            return self.handle_ready()
 
         # Below we are only gonna consider the case we have a valid connection
         if self.client.state in (APClientEnums.DISCONNECTED, APClientEnums.CONNECTING):
             return
 
         # Get a clean version of the message, if there is no useful content in this string skip it
-        clean = message.strip()
         if len(clean) <= 0:
             return
 

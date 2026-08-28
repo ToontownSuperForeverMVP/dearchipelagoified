@@ -2099,6 +2099,14 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         for msg in messages:
             self.archipelagoLog.addToLog(msg)
 
+    # Sends text from the dedicated Archipelago chat panel.  This deliberately
+    # bypasses Toontown's open-chat path so AP messages never create speech
+    # balloons above the local toon.
+    def sendArchipelagoChat(self, message: str) -> None:
+        message = message.strip()[:500]
+        if message:
+            self.sendUpdate('sendArchipelagoChat', [message])
+
     # Tells the server what our death reason should be.
     # We need this because in some circumstances the server is unaware why we are taking damage.
     # When setting death reasons, always make sure to set it BEFORE the damage is taken.

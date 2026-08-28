@@ -68,7 +68,6 @@ class DistributedRace(DistributedObject.DistributedObject):
         self.isUrbanTrack = False
         self.hasFog = False
         self.dummyNode = None
-        self.fog = None
         self.bananaSound = base.loader.loadSfx('phase_6/audio/sfx/KART_tossBanana.ogg')
         self.anvilFall = base.loader.loadSfx('phase_6/audio/sfx/KART_Gag_Hit_Anvil.ogg')
         self.accept('leaveRace', self.leaveRace)
@@ -155,10 +154,6 @@ class DistributedRace(DistributedObject.DistributedObject):
         DistributedSmoothNode.activateSmoothing(1, 0)
         if self.isUrbanTrack:
             self.unloadUrbanTrack()
-        if self.fog:
-            render.setFogOff()
-            del self.fog
-            self.fog = None
         if self.geom is not None:
             try:
                 from toontown.hood import OutdoorLighting
@@ -803,20 +798,16 @@ class DistributedRace(DistributedObject.DistributedObject):
         self.townGeom.removeNode()
 
     def loadFog(self):
+        # Fog is intentionally disabled on all go-kart maps (see
+        # OutdoorLighting.begin(..., fogEnabled=False) in setupGeom).  This
+        # method only keeps the urban-track camera culling and sky tracking
+        # that used to accompany the fog: a bounded far plane keeps the huge
+        # city geometry from being rendered (the previous dense fog + 650-unit
+        # far plane made City Circuit and Blizzard Boulevard nearly invisible
+        # while still shading everything, causing heavy lag).
         self.hasFog = True
-        if self.isUrbanTrack:
-            base.camLens.setFar(650)
-        else:
-            base.camLens.setFar(650)
+        base.camLens.setFar(650)
         self.dummyNode = render.attachNewNode('dummyNode')
-        if base.wantFog:
-            self.fog = Fog('TrackFog')
-            self.fog.setColor(Vec4(0.6, 0.7, 0.8, 1.0))
-            if self.isUrbanTrack:
-                self.fog.setLinearRange(200.0, 650.0)
-            else:
-                self.fog.setLinearRange(200.0, 800.0)
-            render.setFog(self.fog)
         self.sky.setScale(1.725)
         self.sky.reparentTo(self.dummyNode)
 
@@ -923,7 +914,7 @@ class DistributedRace(DistributedObject.DistributedObject):
         self.geom.reparentTo(render)
         try:
             from toontown.hood import OutdoorLighting
-            OutdoorLighting.begin(self.geom, style='gs')
+            OutdoorLighting.begin(self.geom, style='gs', fogEnabled=False)
         except Exception:
             pass
         if self.reversed:

@@ -50,9 +50,9 @@ class HintNode(DirectFrame):
 
     def askForHint(self):
         if self.hintName is None or self.externalHint:
-            base.talkAssistant.sendOpenTalk("!hint")
+            base.localAvatar.sendArchipelagoChat("!hint")
         else:
-            base.talkAssistant.sendOpenTalk("!hint " + self.hintName.value)
+            base.localAvatar.sendArchipelagoChat("!hint " + self.hintName.value)
         taskMgr.doMethodLater(1, self.updateHintTextTask, 'updateHintTextTask')
 
     def updateHintTextTask(self, task):

@@ -7,7 +7,7 @@ currently, this fork doesn't plan to modify the apworld logic at the moment and 
 as of now, this fork currently contains the following features;
 - BK warnings in case player is close to or out of locations left in logic, a warning will show, along with a recommended hint based on where the game will most open up from
 - customizable notification sounds for when you get an item
-- better streaming log of sent and received items, scrollable
+- a draggable, persistent unified chat panel for Toon speech and Archipelago, with scrollable history and in-game customization
 - a procedural sky system and outdoor lighting system, powered by the latest GLSL version
 - slightly modified panda3d to better support such system above, with the shadows off you will see a slightly higher framerate than in vanilla TTAP, in my case it is a ~5% improvement
 - smoother orbital camera and some camera cutscene optimizations

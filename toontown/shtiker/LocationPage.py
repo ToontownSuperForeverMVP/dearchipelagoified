@@ -20,7 +20,7 @@ BK_LOCATION_THRESHOLD = 3
 
 
 class _SimulatedLogicState:
-    """Read-only avatar view with one prospective AP item added."""
+    """Read-only avatar view with prospective tracker-only AP items added."""
 
     _regionToAccessItem = {
         locations.ToontownRegionName.TTC.value: ToontownItemName.TTC_ACCESS,
@@ -37,10 +37,15 @@ class _SimulatedLogicState:
         locations.ToontownRegionName.BBHQ.value: ToontownItemName.BBHQ_ACCESS,
     }
 
-    def __init__(self, avatar, extraItemId):
+    def __init__(self, avatar, extraItems):
         self.avatar = avatar
         self.itemCounts = Counter(itemId for _, itemId in avatar.getReceivedItems())
-        self.itemCounts[extraItemId] += 1
+        if isinstance(extraItems, Counter):
+            self.itemCounts.update(extraItems)
+        elif isinstance(extraItems, dict):
+            self.itemCounts.update(extraItems)
+        else:
+            self.itemCounts[extraItems] += 1
 
     def __getattr__(self, name):
         return getattr(self.avatar, name)
@@ -309,9 +314,26 @@ class LocationPage(ShtikerPage.ShtikerPage):
         self.logicalLocationsLabel['text'] = f"Locations in Logic: {self.logicalLocations}"
         self.selectedLocation = None
 
+    def getTrackerLogicState(self):
+        """Return the live state plus Universal Tracker manual simulations."""
+        manualItems = getattr(base.localAvatar, 'apTrackerManualItems', None)
+        if manualItems:
+            return _SimulatedLogicState(base.localAvatar, manualItems)
+        return base.localAvatar
+
+    def refreshFromArchipelagoCommand(self):
+        """Refresh tracker data after an in-chat Universal Tracker command."""
+        self.getLocations()
+        if self.scrollList is not None:
+            self.regenerateScrollList()
+        if hasattr(self, 'logicalLocationsLabel'):
+            self.logicalLocationsLabel['text'] = f"Locations in Logic: {self.logicalLocations}"
+
     def getLocations(self):
         # Get our checked locations
         checkedLocationIds = base.localAvatar.getCheckedLocations()
+        ignoredLocationIds = getattr(base.localAvatar, 'apTrackerIgnoredLocations', set())
+        logicState = self.getTrackerLogicState()
         # Get our remaining locations
         missingLocations: dict[str,LocationCategory] = {}
         # Locations to force to the top of the list.
@@ -348,8 +370,12 @@ class LocationPage(ShtikerPage.ShtikerPage):
             # Do we already have this location?
             if util.ap_location_name_to_id(location_data.name.value) in checkedLocationIds:
                 continue
+            # Universal Tracker's /ignore commands hide checks from the tracker
+            # without marking them complete or changing actual game logic.
+            if util.ap_location_name_to_id(location_data.name.value) in ignoredLocationIds:
+                continue
             # Is this location in logic?
-            if not test_location(location_data, base.localAvatar, MultiWorld, 1, base.localAvatar.slotData):
+            if not test_location(location_data, logicState, MultiWorld, 1, base.localAvatar.slotData):
                 continue
 
             # Boss checks, combine the rewards into this location for the tracker.

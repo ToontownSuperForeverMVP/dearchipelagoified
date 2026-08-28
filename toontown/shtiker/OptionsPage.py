@@ -42,6 +42,18 @@ OptionToType = {
     'discord-rich-presence': OptionTypes.BUTTON,
     'archipelago-textsize': OptionTypes.SLIDER,
     'archipelago-log-bg': OptionTypes.BUTTON,
+    'archipelago-chat-opacity': OptionTypes.SLIDER,
+    'archipelago-chat-width': OptionTypes.SLIDER,
+    'archipelago-chat-height': OptionTypes.SLIDER,
+    'archipelago-chat-theme': OptionTypes.DROPDOWN,
+    'archipelago-chat-timestamps': OptionTypes.BUTTON,
+    'archipelago-chat-max-history': OptionTypes.DROPDOWN,
+    'archipelago-chat-auto-show': OptionTypes.BUTTON,
+    'archipelago-chat-sounds': OptionTypes.BUTTON,
+    'archipelago-chat-animations': OptionTypes.BUTTON,
+    'archipelago-chat-snap': OptionTypes.BUTTON,
+    'archipelago-chat-mentions': OptionTypes.BUTTON,
+    'archipelago-chat-position-lock': OptionTypes.BUTTON,
     'color-blind-mode': OptionTypes.BUTTON,
     'want-legacy-models': OptionTypes.BUTTON,
     'laff-display': OptionTypes.BUTTON,
@@ -179,8 +191,6 @@ class OptionsTabPage(DirectFrame, FSM):
             'bk-warning',
             'speedchat-style',
             'discord-rich-presence',
-            'archipelago-textsize',
-            'archipelago-log-bg',
             'color-blind-mode',
             'want-legacy-models',
             'laff-display',
@@ -209,6 +219,22 @@ class OptionsTabPage(DirectFrame, FSM):
         "Audio": [
             "music", "sfx", "music-volume", "sfx-volume", "toon-chat-sounds",
             'ap-sounds', "random-music", "random-music-style", "refresh-audio"
+        ],
+        "Chat": [
+            'archipelago-textsize',
+            'archipelago-log-bg',
+            'archipelago-chat-opacity',
+            'archipelago-chat-width',
+            'archipelago-chat-height',
+            'archipelago-chat-theme',
+            'archipelago-chat-timestamps',
+            'archipelago-chat-max-history',
+            'archipelago-chat-auto-show',
+            'archipelago-chat-sounds',
+            'archipelago-chat-animations',
+            'archipelago-chat-snap',
+            'archipelago-chat-mentions',
+            'archipelago-chat-position-lock',
         ],
     }
 
@@ -239,8 +265,16 @@ class OptionsTabPage(DirectFrame, FSM):
         rolloverColor = (0.15, 0.82, 1.0, 1)
         disabledColor = (1.0, 0.98, 0.15, 1)
 
-        initial = -0.175 * len(self.tabOptions)
-        interval = 1.95 * (1 / len(self.tabOptions))
+        # The tab model's label is offset +0.10 from its node.  Center the
+        # visible labels (not just their nodes) across the same 1.56-wide span
+        # used by the original five tabs.  This keeps the added Chat tab
+        # perfectly even with Gameplay through Audio instead of leaving the
+        # whole row skewed to the left.
+        tabCount = len(self.tabOptions)
+        visibleSpan = 1.56
+        labelOffset = 0.10
+        interval = visibleSpan / max(1, tabCount - 1)
+        initial = -labelOffset - visibleSpan / 2
 
         for i, tab in enumerate(list(self.tabOptions)):
             x = initial + i * interval
@@ -365,6 +399,13 @@ class OptionsTabPage(DirectFrame, FSM):
 
     def exitAudio(self) -> None:
         self.options["Audio"].hide()
+
+    def enterChat(self) -> None:
+        self.updateTabs()
+        self.options["Chat"].show()
+
+    def exitChat(self) -> None:
+        self.options["Chat"].hide()
 
     """
     Exit button
@@ -588,6 +629,8 @@ class OptionElement(DirectFrame):
         "sky-cloud-quality": ["off", "low", "medium", "high"],
         "day-night-mode": list(TTLocalizer.OptionDayNightMode),
         "lighting-tonemap-mode": list(TTLocalizer.OptionTonemapMode),
+        "archipelago-chat-theme": ["Blue", "Green", "Purple", "Orange"],
+        "archipelago-chat-max-history": [50, 100, 250, 500],
     })
 
     sliderRanges = {
@@ -598,6 +641,9 @@ class OptionElement(DirectFrame):
         "day-duration-minutes": (1.0, 30.0),
         "night-duration-minutes": (1.0, 20.0),
         "motion-blur-strength": (0.10, 2.00),
+        "archipelago-chat-opacity": (0.15, 1.00),
+        "archipelago-chat-width": (0.74, 1.40),
+        "archipelago-chat-height": (0.48, 0.96),
     }
 
     def __init__(self, page, parent, name: str, index: int, gui, **kw):
@@ -816,6 +862,9 @@ class OptionElement(DirectFrame):
         if self.optionName in ("shadow-quality", "sky-cloud-quality", "day-night-mode", "lighting-tonemap-mode"):
             self._scheduleOutdoorRefresh()
 
+        if self.optionName in ("archipelago-chat-theme", "archipelago-chat-max-history"):
+            self._applyArchipelagoSettings()
+
         # Update the button text with the new setting.
         self.optionModifier["text"] = self.formatSetting(newSetting)
 
@@ -921,6 +970,9 @@ class OptionElement(DirectFrame):
         elif self.optionName == "new-popup":
             base.newPopup = newSetting
 
+        if self.optionName.startswith("archipelago-"):
+            self._applyArchipelagoSettings()
+
         if self.optionName in {
                 "dynamic-shadows", "want-procedural-sky",
                 "lighting-bloom-enabled", "lighting-god-rays",
@@ -954,6 +1006,9 @@ class OptionElement(DirectFrame):
             self.sliderLabel["text"] = str(round(newSetting * 100))
         base.settings.set(self.optionName, newSetting)
 
+        if self.optionName.startswith("archipelago-"):
+            self._applyArchipelagoSettings()
+
         if self.optionName in {
                 "drop-shadow-strength", "fog-density-multiplier",
                 "lighting-intensity", "lighting-exposure",
@@ -981,3 +1036,10 @@ class OptionElement(DirectFrame):
             return task.done
 
         taskMgr.doMethodLater(0.20, refresh, taskName)
+
+    @staticmethod
+    def _applyArchipelagoSettings() -> None:
+        avatar = getattr(base, 'localAvatar', None)
+        panel = getattr(avatar, 'archipelagoLog', None)
+        if panel:
+            panel.applySettings()
