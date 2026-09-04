@@ -9,7 +9,7 @@ from .items import ToontownItemName
 from .options import ToontownOptions, TPSanity, FacilityLocking, GagTrainingFrameBehavior, \
     GagTrainingCheckBehavior
 from .locations import ToontownLocationDefinition, ToontownLocationName, LOCATION_NAME_TO_ID, FISH_LOCATIONS, \
-    get_location_def_from_name
+    get_location_def_from_name, ALL_TASK_LOCATIONS, ALL_TASK_LOCATIONS_SPLIT
 from .regions import ToontownEntranceDefinition, ToontownRegionName
 from .rules import Rule, ItemRule
 
@@ -163,6 +163,7 @@ def HasEnoughLaff(state: CollectionState, locentr: LocEntrDef, world: MultiWorld
         base_hp = options.starting_laff.value
         max_hp = options.max_laff.value
         goal_laff = options.laff_points_required.value
+        hard_combat_logic = options.hard_combat_logic.value
         laff_o = "laff-o-lympics" in options.win_condition
         if laff_o:
             max_hp = max(max_hp, goal_laff)
@@ -170,6 +171,7 @@ def HasEnoughLaff(state: CollectionState, locentr: LocEntrDef, world: MultiWorld
         base_hp = options.get("starting_laff", 20)
         max_hp = options.get("max_laff", 150)
         goal_laff = options.get("laff_points_required", 120)
+        hard_combat_logic = options.get("hard_combat_logic", False)
         laff_o = options.get("win_condition", 0) & ToontownWinCondition.laff_o_lympics
         if laff_o:
             max_hp = max(max_hp, goal_laff)
@@ -177,6 +179,14 @@ def HasEnoughLaff(state: CollectionState, locentr: LocEntrDef, world: MultiWorld
     # Our difference in base and max HP is too low, always true
     if hp_diff < 10:
         return True
+
+    laff_logic_threshold = argument[0]
+    if hard_combat_logic:
+        # We can't reliably lower this by 10%, only 5% instead
+        if laff_logic_threshold == 0.2:
+            laff_logic_threshold -= 0.05
+        else:
+            laff_logic_threshold -= 0.1
 
     # We need this so archipelago itself can calculate our current laff
     def calcLaff():
@@ -188,7 +198,7 @@ def HasEnoughLaff(state: CollectionState, locentr: LocEntrDef, world: MultiWorld
         laff += (5 * state.count(ToontownItemName.LAFF_BOOST_5.value, player))
         return laff
 
-    return calcLaff() >= round(max_hp*argument[0])
+    return calcLaff() >= round(max_hp * laff_logic_threshold)
 
 
 @rule(Rule.HasTTCHQAccess,  ToontownItemName.TTC_ACCESS)
@@ -1232,14 +1242,20 @@ def HasOffensiveLevel(state: CollectionState, locentr: LocEntrDef, world: MultiW
     if isinstance(options, ToontownOptions):
         start_dmg = options.start_damage_multiplier.value
         max_dmg = options.max_damage_multiplier.value
+        hard_combat_logic = options.hard_combat_logic.value
     else:
         start_dmg = options.get("start_damage_multiplier", 100)
         max_dmg = options.get("max_damage_multiplier", 100)
-    LEVEL = argument[0]
-    OVERLEVEL = min(argument[0] + 1, 8)
-    UNDERLEVEL = max(0, argument[0] - 1)
-    LUREMIN = max(0, argument[0] - 2)
+        hard_combat_logic = options.get("hard_combat_logic", False)
 
+    BASE_LEVEL = argument[0]
+    if hard_combat_logic:
+        LEVEL = max(1, (BASE_LEVEL - 1))
+    else:
+        LEVEL = BASE_LEVEL
+    OVERLEVEL = min(LEVEL + 1, 8)
+    UNDERLEVEL = max(0, LEVEL - 1)
+    LUREMIN = max(0, LEVEL - 2)
 
     # The ratio of Gag Capacity items required to reach a given gag level.
     DMG_RATIOS_FOR_GAG_TRACKS = {
@@ -1327,31 +1343,52 @@ def HasOffensiveLevel(state: CollectionState, locentr: LocEntrDef, world: MultiW
         return (final_ratio >= wanted_ratio) or (dmg >= 120)
 
     minimum_lure = state.has(ToontownItemName.LURE_FRAME.value, player, LUREMIN)
-    powerful_squirt_knockback = state.has(ToontownItemName.SQUIRT_FRAME.value, player, LEVEL) \
-                                and state.has(ToontownItemName.LURE_FRAME.value, player, LEVEL) \
-                                and calc_wanted_damage_for_track(ToontownItemName.SQUIRT_FRAME.value, LEVEL)
-    powerful_throw_knockback = state.has(ToontownItemName.THROW_FRAME.value, player, LEVEL) \
-                               and state.has(ToontownItemName.LURE_FRAME.value, player, LEVEL) \
-                               and calc_wanted_damage_for_track(ToontownItemName.THROW_FRAME.value, LEVEL)
-    powerful_drop = state.has(ToontownItemName.DROP_FRAME.value, player, LEVEL) and calc_wanted_damage_for_track(ToontownItemName.DROP_FRAME.value, LEVEL)
-    powerful_trap = state.has(ToontownItemName.TRAP_FRAME.value, player, LEVEL) \
-                    and state.has(ToontownItemName.LURE_FRAME.value, player, UNDERLEVEL) \
-                    and calc_wanted_damage_for_track(ToontownItemName.TRAP_FRAME.value, LEVEL)
-    powerful_sound = state.has(ToontownItemName.SOUND_FRAME.value, player, OVERLEVEL) and calc_wanted_damage_for_track(ToontownItemName.SOUND_FRAME.value, OVERLEVEL)
+    sufficient_healing = state.has(ToontownItemName.TOONUP_FRAME.value, player, UNDERLEVEL) and calc_wanted_damage_for_track(ToontownItemName.TOONUP_FRAME.value, UNDERLEVEL)
 
-    def two_powerful_tracks():
+    def get_num_powerful_tracks(level):
+        overlevel = min((level + 1), 8)
+        underlevel = max((level - 1), 1)
+        level_to_wanted_lures = {
+            1: 0,
+            2: 1,
+            3: 2,
+            4: 4,
+            5: 4,
+            6: 4,
+            7: 6,
+            8: 7
+        }
+        powerful_squirt_knockback = state.has(ToontownItemName.SQUIRT_FRAME.value, player, level) \
+                                    and state.has(ToontownItemName.LURE_FRAME.value, player, level_to_wanted_lures[level]) \
+                                    and calc_wanted_damage_for_track(ToontownItemName.SQUIRT_FRAME.value, level)
+        powerful_throw_knockback = state.has(ToontownItemName.THROW_FRAME.value, player, level) \
+                                   and state.has(ToontownItemName.LURE_FRAME.value, player, level_to_wanted_lures[level]) \
+                                   and calc_wanted_damage_for_track(ToontownItemName.THROW_FRAME.value, level)
+        powerful_drop = state.has(ToontownItemName.DROP_FRAME.value, player, level) and calc_wanted_damage_for_track(ToontownItemName.DROP_FRAME.value, level)
+        powerful_trap = state.has(ToontownItemName.TRAP_FRAME.value, player, level) \
+                        and state.has(ToontownItemName.LURE_FRAME.value, player, underlevel) \
+                        and calc_wanted_damage_for_track(ToontownItemName.TRAP_FRAME.value, level)
+        powerful_sound = state.has(ToontownItemName.SOUND_FRAME.value, player, overlevel) and calc_wanted_damage_for_track(ToontownItemName.SOUND_FRAME.value, overlevel)
+
         powerful_tracks = 0
-        # only trap or drop count for one powerful track
-        if (powerful_trap or powerful_drop):
-            powerful_tracks += 1
-        for track in (powerful_sound, powerful_throw_knockback, powerful_squirt_knockback):
+        tracks = [powerful_sound, powerful_throw_knockback, powerful_squirt_knockback]
+        tracks_extra = [powerful_trap, powerful_drop]
+        if level == LEVEL:
+            # only trap or drop count for one powerful track when considering for current gag level
+            if any(tracks_extra):
+                powerful_tracks += 1
+        else:
+            # if we ever want to check for more than two tracks AND underleveled gags, we should consider both as their own possibilities
+            # currently, this code should never run
+            tracks.extend(tracks_extra)
+        for track in tracks:
             if track:
                 powerful_tracks += 1
-        return powerful_tracks >= 2
+        return powerful_tracks
+    two_tracks_on_level = get_num_powerful_tracks(LEVEL) >= 2
 
-    sufficient_healing = state.has(ToontownItemName.TOONUP_FRAME.value, player, UNDERLEVEL) and calc_wanted_damage_for_track(ToontownItemName.TOONUP_FRAME.value, UNDERLEVEL)
-    can_obtain_exp_required = has_collected_items_for_gag_level(state, player, options, LEVEL)
-    return two_powerful_tracks() and sufficient_healing and minimum_lure and can_obtain_exp_required
+    can_obtain_exp_required = has_collected_items_for_gag_level(state, player, options, BASE_LEVEL)
+    return two_tracks_on_level and sufficient_healing and minimum_lure and can_obtain_exp_required
 
 
 @rule(Rule.CanFightVP,  Rule.CanReachSBHQ, Rule.SellbotDisguise, Rule.HasLevelFiveOffenseGag,  Rule.Has40PercentMax)
@@ -1406,38 +1443,45 @@ def TaskedAllHoods(state: CollectionState, locentr: LocEntrDef, world: MultiWorl
         total_tasks = "total-tasks" in options.win_condition
         hood_tasks = "hood-tasks" in options.win_condition
         tasks_required = options.total_tasks_required.value
+        hood_tasks_required = options.hood_tasks_required.value
     else:
         total_tasks = options.get("win_condition", 0) & ToontownWinCondition.total_tasks
         hood_tasks = options.get("win_condition", 0) & ToontownWinCondition.hood_tasks
         tasks_required = options.get("total_tasks_required", 48)
+        hood_tasks_required = options.get("hood_tasks_required", 8)
     args = (state, locentr, world, player, options)
-    hq_access_to_gag_rule = {
-        Rule.HasTTCHQAccess: Rule.HasLevelOneOffenseGag,
-        Rule.HasDDHQAccess: Rule.HasLevelTwoOffenseGag,
-        Rule.HasDGHQAccess: Rule.HasLevelThreeOffenseGag,
-        Rule.HasMMLHQAccess: Rule.HasLevelFourOffenseGag,
-        Rule.HasTBHQAccess: Rule.HasLevelFiveOffenseGag,
-        Rule.HasDDLHQAccess: Rule.HasLevelSixOffenseGag
-    }
+    all_hq_rules = (passes_rule(Rule.HasTTCHQAccess, *args),
+                    passes_rule(Rule.HasDDHQAccess, *args),
+                    passes_rule(Rule.HasDGHQAccess, *args),
+                    passes_rule(Rule.HasMMLHQAccess, *args),
+                    passes_rule(Rule.HasTBHQAccess, *args),
+                    passes_rule(Rule.HasDDLHQAccess, *args))
+    goal_reachable = False
 
-    def CountAndGagRule():  # We're doing it this way so that we can grab the gag logic we want based on the highest task pg needed
-        rule_list = list(hq_access_to_gag_rule.keys())
-        access_count = 0
-        gag_rule = Rule.HasLevelOneOffenseGag
-        for rule in rule_list:
-            if passes_rule(rule, *args):
-                access_count += 1
-                gag_rule = hq_access_to_gag_rule[rule]
-        return access_count, gag_rule
+    if total_tasks:
+        tasks_logical = 0
+        for task in ALL_TASK_LOCATIONS:
+            if test_location(get_location_def_from_name(task), state, world, player, options):
+                tasks_logical += 1
+            if tasks_logical >= tasks_required:
+                goal_reachable = True
+                break
+    # Don't even bother checking unless we have access to all HQs in the first place
+    if hood_tasks and all(all_hq_rules):
+        playgrounds_can_complete = 0
+        for task_location in ALL_TASK_LOCATIONS_SPLIT:
+            tasks_logical = 0
+            for task in task_location:
+                if test_location(get_location_def_from_name(task), state, world, player, options):
+                    tasks_logical += 1
+                if tasks_logical >= hood_tasks_required:
+                    playgrounds_can_complete += 1
+                    break
+        if playgrounds_can_complete == len(ALL_TASK_LOCATIONS_SPLIT):
+            goal_reachable = True
 
-    access_count, gag_rule = CountAndGagRule()
-
-    if hood_tasks:  # Complete enough tasks in each hood
-        hoods_required = len(list(hq_access_to_gag_rule.keys()))  # We need all of them to win!
-    elif total_tasks:  # Complete enough total tasks
-        hoods_required = math.ceil(tasks_required / 12)  # How many HQs we need minimum to win!
     # Check if we have enough to win.
-    return access_count >= hoods_required and passes_rule(Rule.CanReachTTC, *args) and passes_rule(gag_rule, *args)  # TECHNICALLY TRUE!
+    return passes_rule(Rule.CanReachTTC, *args) and goal_reachable  # TECHNICALLY TRUE!
 
 
 @rule(Rule.GainedEnoughLaff)

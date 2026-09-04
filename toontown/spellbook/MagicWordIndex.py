@@ -4015,6 +4015,8 @@ class Archipelago(MagicWord):
                 return f"Cannot wipe {toon.getName()}'s progress while connected to AP!"
             else:
                 toon.newToon()
+                if toon.zoneId != ToontownGlobals.ToontownCentral:
+                    toon.d_doTeleport('TTC')
                 return f"Wiped {toon.getName()}'s progress!"
 
         if operation in ('reward', 'gift'):

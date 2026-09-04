@@ -13,6 +13,7 @@ from toontown.archipelago.util.net_utils import NetworkPlayer, NetworkSlot, Clie
 from toontown.archipelago.packets.clientbound.clientbound_packet_base import ClientBoundPacketBase
 from panda3d.core import VirtualFileSystem, Filename
 import json
+from pathlib import Path
 from apworld.toontown.options import DeathLinkOption
 from toontown.fishing import FishGlobals
 from otp.otpbase import OTPGlobals
@@ -52,9 +53,28 @@ class ConnectedPacket(ClientBoundPacketBase):
         self.hint_points: int = self.read_raw_field('hint_points', ignore_missing=True)
 
         fileSystem = VirtualFileSystem.getGlobalPtr()
-        file_path = Filename("apworld/toontown/archipelago.json")
-        ap_json = json.loads(fileSystem.readFile(file_path, True))
+        try:
+            file_path = Filename("apworld/toontown/archipelago.json")
+            ap_json = json.loads(fileSystem.readFile(file_path, True))
+        except OSError:
+            # If we hit this error, we're on a built client so we need to grab the .json a different way
+            current_directory = Path(__file__).parent
+            base_directory = None
+            for directory in current_directory.parents:
+                if directory.name in ("game", "toontown-archipelago"):
+                    base_directory = directory
+                    break
+            json_directory = base_directory / "apworld" / "toontown" / "archipelago.json"
+            directory_string = str(json_directory).replace("\\", "/")
+            file_path = Filename.fromOsSpecific(directory_string)
+            json_data = fileSystem.readFile(file_path, True)
+            if not json_data:
+                ap_json = {"world_version": "Error"}
+            else:
+                ap_json = json.loads(json_data)
         self.game_version = "v" + str(ap_json.get("world_version", "Error"))
+
+
 
     def get_slot_info(self, slot: int) -> NetworkSlot:
         return self.slot_info[str(slot)]

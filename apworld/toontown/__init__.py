@@ -23,11 +23,15 @@ import json
 
 DEBUG_MODE = False
 
-json_data = pkgutil.get_data(__name__, "archipelago.json")
-if not json_data:
+try:
+    json_data = pkgutil.get_data(__name__, "archipelago.json")
+    if not json_data:
+        ap_json = {"world_version" : "Error"}
+    else:
+        ap_json = json.loads(json_data.decode("utf-8"))
+except FileNotFoundError:
+    # If we hit this error, we're a built client trying to start the game and we don't actually need to open the json
     ap_json = {"world_version" : "Error"}
-else:
-    ap_json = json.loads(json_data.decode("utf-8"))
 
 class ToontownWeb(WebWorld):
     tutorials = [Tutorial(
@@ -769,6 +773,7 @@ class ToontownWorld(World):
             "base_global_gag_xp": self.options.base_global_gag_xp.value,
             "start_damage_multiplier": self.options.start_damage_multiplier.value,
             "max_damage_multiplier": self.options.max_damage_multiplier.value,
+            "hard_combat_logic": self.options.hard_combat_logic.value,
             "overflow_mod": self.options.overflow_mod.value,
             "win_condition": int(win_condition),
             "cog_bosses_required": self.options.cog_bosses_required.value,
