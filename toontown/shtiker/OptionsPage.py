@@ -12,6 +12,8 @@ from direct.showbase.MessengerGlobal import messenger
 from otp.otpbase.OTPLocalizerEnglish import SpeedChatStaticTextToontown
 from otp.speedchat.SpeedChatGlobals import speedChatStyles
 from toontown.settings.Settings import Setting
+from toontown.settings import ChatTheme
+from toontown.settings.ChatTheme import normalize_hex, parse_hex_color
 from toontown.shtiker.ShtikerPage import ShtikerPage
 from toontown.toonbase import TTLocalizer
 from toontown.toontowngui import TTDialog
@@ -26,6 +28,8 @@ class OptionTypes(IntEnum):
     SLIDER = auto()
     CONTROL = auto()
     BUTTON_SPEEDCHAT = auto()
+    COLOR = auto()
+    BUTTON_ACTION = auto()
 
 
 OptionToType = {
@@ -49,16 +53,31 @@ OptionToType = {
     'archipelago-chat-timestamps': OptionTypes.BUTTON,
     'archipelago-chat-max-history': OptionTypes.DROPDOWN,
     'archipelago-chat-auto-show': OptionTypes.BUTTON,
-    'archipelago-chat-sounds': OptionTypes.BUTTON,
     'archipelago-chat-animations': OptionTypes.BUTTON,
     'archipelago-chat-snap': OptionTypes.BUTTON,
     'archipelago-chat-mentions': OptionTypes.BUTTON,
     'archipelago-chat-position-lock': OptionTypes.BUTTON,
+    'archipelago-chat-font': OptionTypes.DROPDOWN,
+    'archipelago-chat-text-color': OptionTypes.COLOR,
+    'archipelago-chat-bg-color': OptionTypes.COLOR,
+    'archipelago-chat-accent-color': OptionTypes.COLOR,
+    'archipelago-chat-header-color': OptionTypes.COLOR,
+    'archipelago-chat-title-color': OptionTypes.COLOR,
+    'archipelago-chat-channel-ap': OptionTypes.COLOR,
+    'archipelago-chat-channel-toon': OptionTypes.COLOR,
+    'archipelago-chat-channel-you': OptionTypes.COLOR,
+    'archipelago-chat-channel-client': OptionTypes.COLOR,
+    'archipelago-chat-channel-error': OptionTypes.COLOR,
+    'ap-reward-font': OptionTypes.DROPDOWN,
+    'ap-reward-text-color': OptionTypes.COLOR,
+    'ap-reward-bg-color': OptionTypes.COLOR,
+    'ap-reward-text-scale': OptionTypes.SLIDER,
     'color-blind-mode': OptionTypes.BUTTON,
     'want-legacy-models': OptionTypes.BUTTON,
     'laff-display': OptionTypes.BUTTON,
     'new-popup': OptionTypes.BUTTON,
     'battle-speed': OptionTypes.DROPDOWN,
+    'arrange-ui': OptionTypes.BUTTON_ACTION,
 
     # Privacy
     "competitive-boss-scoring": OptionTypes.BUTTON,
@@ -194,6 +213,7 @@ class OptionsTabPage(DirectFrame, FSM):
             'color-blind-mode',
             'want-legacy-models',
             'laff-display',
+            'arrange-ui',
         ],
         "Privacy": [
             "competitive-boss-scoring",
@@ -223,6 +243,17 @@ class OptionsTabPage(DirectFrame, FSM):
         "Chat": [
             'archipelago-textsize',
             'archipelago-log-bg',
+            'archipelago-chat-font',
+            'archipelago-chat-text-color',
+            'archipelago-chat-bg-color',
+            'archipelago-chat-accent-color',
+            'archipelago-chat-header-color',
+            'archipelago-chat-title-color',
+            'archipelago-chat-channel-ap',
+            'archipelago-chat-channel-toon',
+            'archipelago-chat-channel-you',
+            'archipelago-chat-channel-client',
+            'archipelago-chat-channel-error',
             'archipelago-chat-opacity',
             'archipelago-chat-width',
             'archipelago-chat-height',
@@ -230,11 +261,16 @@ class OptionsTabPage(DirectFrame, FSM):
             'archipelago-chat-timestamps',
             'archipelago-chat-max-history',
             'archipelago-chat-auto-show',
-            'archipelago-chat-sounds',
             'archipelago-chat-animations',
             'archipelago-chat-snap',
             'archipelago-chat-mentions',
             'archipelago-chat-position-lock',
+        ],
+        "Items": [
+            'ap-reward-font',
+            'ap-reward-text-scale',
+            'ap-reward-text-color',
+            'ap-reward-bg-color',
         ],
     }
 
@@ -406,6 +442,13 @@ class OptionsTabPage(DirectFrame, FSM):
 
     def exitChat(self) -> None:
         self.options["Chat"].hide()
+
+    def enterItems(self) -> None:
+        self.updateTabs()
+        self.options["Items"].show()
+
+    def exitItems(self) -> None:
+        self.options["Items"].hide()
 
     """
     Exit button
@@ -597,6 +640,155 @@ class DropdownScrolledFrame(ToontownScrolledFrame):
         super().destroy()
 
 
+class ColorPickerFrame(DirectFrame):
+    """A small popup for choosing any colour: preset swatches plus a hex box.
+
+    Presets offer one-click choices; the text field accepts any ``#RRGGBB``
+    value (passed through ``normalize_hex``) so the player really can use any
+    colour they like.
+    """
+
+    SWATCH = 0.054
+    COLS = 5
+
+    def __init__(self, optionName, presets, onApply, cancelCommand=None,
+                 autoEnabled=False, pos=None):
+        DirectFrame.__init__(
+            self, parent=aspect2d, relief=DGG.FLAT,
+            frameSize=(-0.34, 0.34, -0.24, 0.30),
+            frameColor=(0.05, 0.06, 0.10, 0.98),
+            pos=pos or (0, 0, 0),
+        )
+        self.optionName = optionName
+        self.onApply = onApply
+        self.cancelCommand = cancelCommand
+        self.autoEnabled = autoEnabled
+
+        # Clicking anywhere outside closes the picker.
+        self.cancelButton = DirectButton(
+            parent=aspect2d, relief=None,
+            frameSize=(-2.0, 2.0, -2.0, 2.0), command=self._cancel,
+        )
+        self.cancelButton.reparentTo(aspect2d, DGG.FADE_SORT_INDEX + 10)
+        self.cancelButton.setBin('gui-popup', 4990)
+
+        # For options that support it, a shortcut back to 'follow the accent'.
+        if autoEnabled:
+            autoActive = ChatTheme.is_auto_color(base.settings.get(optionName))
+            DirectButton(
+                parent=self, relief=DGG.FLAT,
+                frameColor=(0.20, 0.20, 0.27, 1) if autoActive else (0.14, 0.14, 0.18, 1),
+                frameSize=(-0.11, 0.11, -0.036, 0.036),
+                pos=(0.25, 0, 0.245),
+                text="Auto (Accent)", text_scale=0.040,
+                command=self._pickAuto, text_fg=(0.75, 0.85, 1, 1) if autoActive else (0.55, 0.6, 0.7, 1),
+            )
+
+        DirectLabel(
+            parent=self, relief=None, pos=(0, 0, 0.245),
+            text=TTLocalizer.OptionNames.get(optionName, optionName),
+            text_scale=0.052,
+        )
+
+        # One clickable swatch per preset, laid out in a grid.
+        self._swatchButtons = []
+        for index, color in enumerate(presets):
+            row = index // self.COLS
+            column = index % self.COLS
+            x = -0.24 + column * (self.SWATCH + 0.012) + self.SWATCH / 2
+            z = 0.17 - row * (self.SWATCH + 0.014)
+            button = DirectButton(
+                parent=self, relief=DGG.FLAT,
+                frameSize=(-self.SWATCH / 2, self.SWATCH / 2,
+                           -self.SWATCH / 2, self.SWATCH / 2),
+                frameColor=(1, 1, 1, 1),
+                pos=(x, 0, z),
+            )
+            rgb = parse_hex_color(color, Vec4(1, 1, 1, 1))
+            button.setColorScale(rgb[0], rgb[1], rgb[2], 1)
+            button.bind(DGG.B1CLICK, self._pick, extraArgs=[color])
+            self._swatchButtons.append(button)
+
+        lastRowZ = 0.17 - ((len(presets) - 1) // self.COLS) * (self.SWATCH + 0.014)
+
+        DirectLabel(
+            parent=self, relief=None, pos=(-0.30, 0, lastRowZ - 0.09),
+            text="Hex:", text_align=TextNode.ARight, text_scale=0.045,
+        )
+        current = base.settings.get(optionName)
+        if isinstance(current, str) and not ChatTheme.is_auto_color(current):
+            defaultHex = current
+        else:
+            defaultHex = presets[0] if presets else ''
+        self.hexEntry = DirectEntry(
+            parent=self, relief=DGG.SUNKEN,
+            frameColor=(0.1, 0.1, 0.15, 1),
+            frameSize=(-0.12, 0.14, -0.033, 0.033),
+            pos=(-0.16, 0, lastRowZ - 0.09),
+            text=normalize_hex(defaultHex, '#FFFFFF'),
+            text_scale=0.042,
+            numLines=1, width=12, focus=0, backgroundFocus=1,
+        )
+        self.hexEntry.bind(DGG.TYPE, self._onHexTyped)
+
+        self.stateLabel = DirectLabel(
+            parent=self, relief=None, pos=(0.18, 0, lastRowZ - 0.09),
+            text="", text_scale=0.038,
+            text_fg=(0.5, 0.95, 0.55, 1),
+        )
+
+        DirectButton(
+            parent=self, relief=DGG.FLAT,
+            frameColor=(0.12, 0.5, 0.85, 1),
+            frameSize=(-0.10, 0.10, -0.034, 0.034),
+            pos=(-0.12, 0, -0.205),
+            text="Apply", text_scale=0.044,
+            command=self._apply, text_fg=(1, 1, 1, 1),
+        )
+        DirectButton(
+            parent=self, relief=DGG.FLAT,
+            frameColor=(0.28, 0.28, 0.34, 1),
+            frameSize=(-0.10, 0.10, -0.034, 0.034),
+            pos=(0.12, 0, -0.205),
+            text="Cancel", text_scale=0.044,
+            command=self._cancel, text_fg=(1, 1, 1, 1),
+        )
+
+        self.initialiseoptions(ColorPickerFrame)
+
+    def _pick(self, color, _event=None):
+        self.onApply(color)
+
+    def _pickAuto(self, *_):
+        self.onApply(ChatTheme.AUTO_COLOR)
+
+    def _onHexTyped(self, *_):
+        value = normalize_hex(self.hexEntry.get())
+        if value.startswith("#"):
+            color = parse_hex_color(value)
+            self.hexEntry["frameColor"] = (color[0] * 0.35, color[1] * 0.35, color[2] * 0.35, 1)
+            self.stateLabel["text"] = value
+        else:
+            self.stateLabel["text"] = ""
+
+    def _apply(self, *_):
+        self.onApply(self.hexEntry.get())
+
+    def _cancel(self, *_):
+        if self.cancelCommand:
+            self.cancelCommand()
+        else:
+            self.destroy()
+
+    def destroy(self):
+        if hasattr(self, 'cancelButton') and self.cancelButton is not None:
+            self.cancelButton.destroy()
+            self.cancelButton = None
+        for button in getattr(self, '_swatchButtons', []):
+            button.destroy()
+        super().destroy()
+
+
 class OptionElement(DirectFrame):
     """
     Option types:
@@ -644,6 +836,7 @@ class OptionElement(DirectFrame):
         "archipelago-chat-opacity": (0.15, 1.00),
         "archipelago-chat-width": (0.74, 1.40),
         "archipelago-chat-height": (0.48, 0.96),
+        "ap-reward-text-scale": (0.40, 2.50),
     }
 
     def __init__(self, page, parent, name: str, index: int, gui, **kw):
@@ -675,14 +868,18 @@ class OptionElement(DirectFrame):
         # A separate frame for dropdown options which contains a list of option buttons.
         self.dropdownFrame: Optional[DropdownScrolledFrame] = None
 
+        # A colour swatch box shown to the left of the hex text on colour
+        # buttons, so the chosen colour is visible at a glance.
+        self.colorSwatch = None
+
         # Make the button which will appear on the right-hand side of
         # the page.
         if self.optionType in (OptionTypes.BUTTON, OptionTypes.CONTROL, OptionTypes.BUTTON_SPEEDCHAT,
-                               OptionTypes.DROPDOWN):
+                               OptionTypes.COLOR, OptionTypes.DROPDOWN, OptionTypes.BUTTON_ACTION):
             self.optionModifier = DirectButton(
                 parent=self, relief=None, pos=(0.37, 0, z),
                 text=self.formatSetting(currSetting),
-                text_scale=0.052, image_pos=(0, 0, 0.02),
+                text_scale=0.048, image_pos=(0, 0, 0.02),
                 image=(
                     gui.find("**/QuitBtn_UP"),
                     gui.find("**/QuitBtn_DN"),
@@ -690,8 +887,13 @@ class OptionElement(DirectFrame):
                 ),
                 image_scale=(0.7, 1, 1),
             )
-            if self.optionType == OptionTypes.DROPDOWN:
+            if self.optionType == OptionTypes.COLOR:
+                self.optionModifier["command"] = self._openColorPicker
+                self._refreshColorSwatch()
+            elif self.optionType == OptionTypes.DROPDOWN:
                 self.optionModifier["command"] = self._openDropdown
+            elif self.optionType == OptionTypes.BUTTON_ACTION:
+                self.optionModifier["command"] = self._handleAction
             else:
                 self.optionModifier["command"] = self._updateButtonOption
 
@@ -701,6 +903,8 @@ class OptionElement(DirectFrame):
             
             if self.optionName == 'refresh-audio':
                 self.optionModifier["text"] = TTLocalizer.OptionRefresh  # This is a special case where there is no setting to display.
+            elif self.optionName == 'arrange-ui':
+                self.optionModifier["text"] = TTLocalizer.OptionArrangeUI  # Action button: no setting value to display.
         
         # Make the slider which will appear on the right-hand side of
         # the page.
@@ -724,6 +928,8 @@ class OptionElement(DirectFrame):
                 labelText = f"{round(currSetting, 1)}m"
             elif self.optionName in ("fog-density-multiplier", "lighting-intensity", "lighting-exposure", "motion-blur-strength"):
                 labelText = f"{round(currSetting * 100)}%"
+            elif self.optionName == "ap-reward-text-scale":
+                labelText = f"{round(currSetting, 2)}x"
             else:
                 labelText = str(round(currSetting * 100))
 
@@ -744,6 +950,14 @@ class OptionElement(DirectFrame):
         if hasattr(self, "dropdownFrame") and self.dropdownFrame is not None:
             self.dropdownFrame.destroy()
             self.dropdownFrame = None
+
+        if hasattr(self, "colorFrame") and self.colorFrame is not None:
+            self.colorFrame.destroy()
+            self.colorFrame = None
+
+        if hasattr(self, "colorSwatch") and self.colorSwatch is not None:
+            self.colorSwatch.destroy()
+            self.colorSwatch = None
 
         if hasattr(self, "sliderLabel"):
             self.sliderLabel.destroy()
@@ -833,11 +1047,90 @@ class OptionElement(DirectFrame):
         buttonPos = self.optionModifier.getPos(aspect2d)
         self.dropdownFrame = DropdownScrolledFrame(
             self.optionName, parent=aspect2d, pos=buttonPos,
-            options=self.optionOptions[self.optionName],
+            options=self._dropdownOptions(),
             command=self._updateDropdownOption,
             cancelCommand=self._closeDropdown,
         )
         self.dropdownFrame.setBin('gui-popup', 5000)
+
+    @staticmethod
+    def _fontOptions():
+        return {"archipelago-chat-font", "ap-reward-font"}
+
+    def _dropdownOptions(self):
+        """Options shown in the dropdown.  Font options pull the list of
+        fonts actually installed on this machine at runtime."""
+        if self.optionName in self._fontOptions():
+            return ChatTheme.get_installed_fonts()
+        return self.optionOptions[self.optionName]
+
+    @staticmethod
+    def _autoColorOptions():
+        """Colour options that can be set to 'Auto' to follow the accent."""
+        return {"archipelago-chat-header-color", "archipelago-chat-channel-ap"}
+
+    def _colorPresets(self):
+        return {
+            "archipelago-chat-text-color": ChatTheme.TEXT_COLOR_PRESETS,
+            "archipelago-chat-bg-color": ChatTheme.BACKGROUND_COLOR_PRESETS,
+            "archipelago-chat-accent-color": ChatTheme.ACCENT_COLOR_PRESETS,
+            "archipelago-chat-header-color": ChatTheme.ACCENT_COLOR_PRESETS,
+            "archipelago-chat-title-color": ChatTheme.TEXT_COLOR_PRESETS,
+            "archipelago-chat-channel-ap": ChatTheme.ACCENT_COLOR_PRESETS,
+            "archipelago-chat-channel-toon": ChatTheme.ACCENT_COLOR_PRESETS,
+            "archipelago-chat-channel-you": ChatTheme.ACCENT_COLOR_PRESETS,
+            "archipelago-chat-channel-client": ChatTheme.ACCENT_COLOR_PRESETS,
+            "archipelago-chat-channel-error": ChatTheme.TEXT_COLOR_PRESETS,
+            "ap-reward-text-color": ChatTheme.TEXT_COLOR_PRESETS,
+            "ap-reward-bg-color": ChatTheme.BACKGROUND_COLOR_PRESETS,
+        }.get(self.optionName, ChatTheme.TEXT_COLOR_PRESETS)
+
+    def _refreshColorSwatch(self) -> None:
+        """Keep the little colour box beside a colour button in sync."""
+        if self.optionName not in self._colorPresets():
+            return
+        if ChatTheme.is_auto_color(base.settings.get(self.optionName)):
+            color = Vec4(0.42, 0.42, 0.42, 1)
+        else:
+            color = parse_hex_color(base.settings.get(self.optionName), Vec4(1, 1, 1, 1))
+        if self.colorSwatch is None:
+            from direct.gui.DirectGui import DirectFrame
+            self.colorSwatch = DirectFrame(
+                parent=self, relief=DGG.FLAT, name='colorSwatch',
+                frameSize=(-0.026, 0.026, -0.026, 0.026),
+                pos=(0.05, 0, self.optionModifier.getZ()),
+            )
+        self.colorSwatch["frameColor"] = (color[0], color[1], color[2], 1)
+
+    def _openColorPicker(self) -> None:
+        if self.optionType != OptionTypes.COLOR:
+            return
+        buttonPos = self.optionModifier.getPos(aspect2d)
+        self.colorFrame = ColorPickerFrame(
+            optionName=self.optionName,
+            presets=self._colorPresets(),
+            onApply=self._updateColorOption,
+            cancelCommand=self._closeColorPicker,
+            autoEnabled=self.optionName in self._autoColorOptions(),
+            pos=buttonPos,
+        )
+        self.colorFrame.setBin('gui-popup', 5000)
+
+    def _closeColorPicker(self) -> None:
+        if getattr(self, 'colorFrame', None) is not None:
+            self.colorFrame.destroy()
+            self.colorFrame = None
+
+    def _updateColorOption(self, newHex: str) -> None:
+        if ChatTheme.is_auto_color(newHex):
+            stored = ChatTheme.AUTO_COLOR
+        else:
+            stored = normalize_hex(newHex, base.settings.get(self.optionName))
+        base.settings.set(self.optionName, stored)
+        self.optionModifier["text"] = stored
+        self._refreshColorSwatch()
+        self._applyArchipelagoSettings()
+        self._closeColorPicker()
 
     def _closeDropdown(self) -> None:
         if self.dropdownFrame is not None:
@@ -862,11 +1155,17 @@ class OptionElement(DirectFrame):
         if self.optionName in ("shadow-quality", "sky-cloud-quality", "day-night-mode", "lighting-tonemap-mode"):
             self._scheduleOutdoorRefresh()
 
-        if self.optionName in ("archipelago-chat-theme", "archipelago-chat-max-history"):
+        if self.optionName in ("archipelago-chat-theme", "archipelago-chat-max-history") or self.optionName in self._fontOptions():
             self._applyArchipelagoSettings()
 
         # Update the button text with the new setting.
         self.optionModifier["text"] = self.formatSetting(newSetting)
+
+    def _handleAction(self) -> None:
+        """Action buttons don't toggle a setting - they do something."""
+        if self.optionName == 'arrange-ui':
+            from toontown.toontowngui.UIArrangeManager import getUIArrangeManager
+            getUIArrangeManager().requestEnter()
 
     def _updateButtonOption(self) -> None:
         messenger.send("wakeup")
@@ -1002,6 +1301,8 @@ class OptionElement(DirectFrame):
             self.sliderLabel["text"] = f"{round(newSetting, 1)}m"
         elif self.optionName in ("fog-density-multiplier", "lighting-intensity", "lighting-exposure", "motion-blur-strength"):
             self.sliderLabel["text"] = f"{round(newSetting * 100)}%"
+        elif self.optionName == "ap-reward-text-scale":
+            self.sliderLabel["text"] = f"{round(newSetting, 2)}x"
         else:
             self.sliderLabel["text"] = str(round(newSetting * 100))
         base.settings.set(self.optionName, newSetting)
@@ -1015,6 +1316,9 @@ class OptionElement(DirectFrame):
                 "day-duration-minutes", "night-duration-minutes",
                 "motion-blur-strength"}:
             self._scheduleOutdoorRefresh()
+
+        if self.optionName == "ap-reward-text-scale":
+            self._applyArchipelagoSettings()
 
     @staticmethod
     def _scheduleOutdoorRefresh() -> None:
@@ -1043,3 +1347,6 @@ class OptionElement(DirectFrame):
         panel = getattr(avatar, 'archipelagoLog', None)
         if panel:
             panel.applySettings()
+        reward = getattr(avatar, 'archipelagoRewardDisplay', None)
+        if reward:
+            reward.applySettings()

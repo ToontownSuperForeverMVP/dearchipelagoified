@@ -726,6 +726,9 @@ class DistributedBattleBase(DistributedNode.DistributedNode, BattleBase):
     def __removeToon(self, toon, unexpected = 0):
         self.notify.debug('__removeToon(%d)' % toon.doId)
         self.exitedToons.append(toon)
+        # Remember whether this was a voluntary run (before we clear runningToons below) so
+        # that on the street we can leave the player in place instead of warping to the safe zone.
+        ranAway = (toon == base.localAvatar and unexpected == 0 and self.runningToons.count(toon) != 0)
         if self.toons.count(toon) != 0:
             self.toons.remove(toon)
         if self.joiningToons.count(toon) != 0:
@@ -745,7 +748,13 @@ class DistributedBattleBase(DistributedNode.DistributedNode, BattleBase):
         self.toonGone = 1
         if toon == base.localAvatar:
             self.removeLocalToon()
-            self.__teleportToSafeZone(toon)
+            if ranAway and self.streetBattle:
+                # They ran away from a street battle: leave them standing on the street
+                # where the fight was instead of warping them back to the playground. The
+                # cogs dance and fly away on the server as they normally would.
+                self.__exitRunOnStreet(toon)
+            else:
+                self.__teleportToSafeZone(toon)
             return 1
         return 0
 
@@ -885,6 +894,19 @@ class DistributedBattleBase(DistributedNode.DistributedNode, BattleBase):
           'shardId': None,
           'avId': -1,
           'battle': 1}])
+        return
+
+    def __exitRunOnStreet(self, toon):
+        # The local toon ran away from a street battle. Re-attach them to the street in
+        # place (the run animation detached them from the scene graph) rather than
+        # teleporting them back to the playground.
+        self.notify.debug('__exitRunOnStreet(%d)' % toon.doId)
+        toon.reparentTo(render)
+        # Battle coordinates keep the toon's street x/y (only z was flattened to the
+        # ground during the fight), so preserving them leaves the toon where they were.
+        toon.setZ(0.0)
+        toon.loop('neutral')
+        toon.setShadowHeight(0)
         return
 
     def __makeToonJoin(self, toon, pendingToons, ts):

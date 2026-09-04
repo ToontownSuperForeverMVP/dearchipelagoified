@@ -2740,7 +2740,15 @@ class CompleteQuests(MagicWord):
     def handleWord(self, invoker, avId, toon, *args):
 
         for index in range(len(toon.quests)):
-            toon.quests[index][4] = 2**16
+            quest = Quests.getQuest(toon.quests[index][0])
+            if isinstance(quest, Quests.RecoverItemQuest):
+                # RecoverItemQuest progress is packed into two 16-bit halves, with the
+                # number of items recovered stored in the low bits. Setting the whole
+                # value to 2**16 would leave the recovered count at 0, so set it to the
+                # number of items needed instead.
+                toon.quests[index][4] = quest.getNumItems()
+            else:
+                toon.quests[index][4] = 2**16
         toon.b_setQuests(toon.quests)
         return f"Completed {len(toon.quests)} of {toon.getName()}'s quests!"
 

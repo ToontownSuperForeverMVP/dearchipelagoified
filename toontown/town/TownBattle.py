@@ -619,7 +619,11 @@ class TownBattle(StateData.StateData):
             self.notify.warning('unknown mode: %s' % mode)
 
     def enterRun(self):
-        self.runPanel.show()
+        # One-click run with no confirmation prompt: immediately run from the battle.
+        self.runPanel.hide()
+        response = {}
+        response['mode'] = 'Run'
+        messenger.send(self.battleEvent, [response])
 
     def exitRun(self):
         self.runPanel.hide()

@@ -1,5 +1,4 @@
 from typing import List
-import random
 
 from direct.gui import DirectGuiGlobals
 from direct.gui.DirectButton import DirectButton
@@ -10,10 +9,11 @@ from direct.gui.OnscreenText import OnscreenText
 from direct.interval.FunctionInterval import Wait, Func
 from direct.interval.LerpInterval import LerpPosInterval, LerpFunctionInterval
 from direct.interval.MetaInterval import Sequence
-from panda3d.core import ClockObject, TextNode, TransparencyAttrib
+from panda3d.core import TextNode, TransparencyAttrib
 from direct.gui.DirectGui import DGG
 
 from toontown.archipelago.definitions.rewards import APReward, IgnoreReward
+from toontown.settings.ChatTheme import load_font, parse_hex_color
 
 
 # A wrapper class for an AP reward that was obtained, stores the APReward and the person who gave it to us
@@ -63,22 +63,8 @@ class ArchipelagoRewardDisplay(DirectLabel):
 
     DEFAULT_IMAGE_PATH = 'phase_14/maps/ap_icon.png'
 
-    # Escalating count sounds: normal, then large, massive, and wondrous as items arrive in a row
-    ITEM_SOUND_PATHS = [
-        'phase_14/audio/sfx/count.wav',
-        'phase_14/audio/sfx/count_large.wav',
-        'phase_14/audio/sfx/count_massive.wav',
-        'phase_14/audio/sfx/count_wondrous.wav',
-    ]
-    # A pentatonic-ish set of playback rates so repeated rewards sound like a pleasant count
-    ITEM_SOUND_PITCHES = [0.8, 0.9, 1.0, 1.12, 1.25]
-    # If items are received within this window of each other, the count sound escalates a tier
-    COMBO_WINDOW = 3.0
-    # On the top tier, the pitch climbs each successive item, then loops back to normal pitch
-    # before it gets uncomfortably high
-    WONDROUS_PITCH_START = 1.0
-    WONDROUS_PITCH_STEP = 0.1
-    WONDROUS_PITCH_MAX = 1.5
+    # A cheerful boing notification whenever an item is received
+    ITEM_SOUND_PATH = 'phase_3/audio/sfx/clock03.ogg'
 
     def __init__(self, **kw):
         super().__init__(**kw)
@@ -96,10 +82,7 @@ class ArchipelagoRewardDisplay(DirectLabel):
         self.__holding_shift = False
         self.accept('shift', self.__shift_press)
         self.accept('shift-up', self.__shift_up)
-        self.item_sounds = [base.loader.loadSfx(path) for path in self.ITEM_SOUND_PATHS]
-        self._count_tier = 0
-        self._wondrous_pitch = self.WONDROUS_PITCH_START
-        self._last_item_time = None
+        self.item_sound = base.loader.loadSfx(self.ITEM_SOUND_PATH)
 
     def __shift_press(self):
         self.__holding_shift = True
@@ -131,6 +114,37 @@ class ArchipelagoRewardDisplay(DirectLabel):
         self['text_align'] = self.TEXT_ALIGN
         self.setText('Your SOMETHING now\ndoes SOMETHING COOL!\n\nFrom: SOME PLAYER')
 
+        # Re-apply the player's theme (font + colours + size) on top.
+        self.applySettings()
+
+    def applySettings(self):
+        """Apply the customisable item-notification appearance immediately.
+
+        Reads the saved font, text colour, background colour and text size and
+        updates this display in place, so the change takes effect even for an
+        item already queued.
+        """
+        try:
+            font = load_font(base.settings.get('ap-reward-font'))
+            if font is not None:
+                self['text_font'] = font
+
+            self['text_fg'] = parse_hex_color(base.settings.get('ap-reward-text-color'),
+                                              self.TEXT_COLOR)
+
+            bg = parse_hex_color(base.settings.get('ap-reward-bg-color'), self.FRAME_COLOR)
+            self['frameColor'] = (bg[0], bg[1], bg[2], self.FRAME_COLOR[3])
+
+            scale = 1.0
+            try:
+                scale = float(base.settings.get('ap-reward-text-scale'))
+            except (TypeError, ValueError):
+                scale = 1.0
+            self['text_scale'] = self.TEXT_SCALE * min(2.5, max(0.4, scale))
+        except Exception:
+            # Never break the notification from a bad saved setting.
+            pass
+
     # Updates the image shown on the left side
     def display_image(self, scale, pos, path=None):
         if path is None:
@@ -151,33 +165,11 @@ class ArchipelagoRewardDisplay(DirectLabel):
         self.display_image(reward.get_image_scale(), reward.get_image_pos(), reward.get_image_path())
         self._do_slide_sequence()
 
-    # Escalate the count tier when items are received in quick succession, resetting back
-    # to the normal sound once COMBO_WINDOW seconds pass without receiving an item
-    def _update_count_tier(self):
-        now = ClockObject.getGlobalClock().getRealTime()
-        if self._last_item_time is None or (now - self._last_item_time) > self.COMBO_WINDOW:
-            self._count_tier = 0
-            self._wondrous_pitch = self.WONDROUS_PITCH_START
-        else:
-            self._count_tier = min(self._count_tier + 1, len(self.ITEM_SOUND_PATHS) - 1)
-        self._last_item_time = now
-
-    # Play the item pickup sound at the current escalation tier. Lower tiers use a random pitch;
-    # the top (wondrous) tier climbs higher with each successive item, looping back to normal
-    # pitch before it gets uncomfortably high
+    # Play the item pickup boing notification
     def _play_item_sound(self):
-        sound = self.item_sounds[self._count_tier]
-        if sound is None:
+        if self.item_sound is None:
             return
-        if self._count_tier >= len(self.ITEM_SOUND_PATHS) - 1:
-            pitch = self._wondrous_pitch
-            self._wondrous_pitch += self.WONDROUS_PITCH_STEP
-            if self._wondrous_pitch > self.WONDROUS_PITCH_MAX:
-                self._wondrous_pitch = self.WONDROUS_PITCH_START
-        else:
-            pitch = random.choice(self.ITEM_SOUND_PITCHES)
-        sound.setPlayRate(pitch)
-        sound.play()
+        self.item_sound.play()
 
     # Update the progress bar that signals how long this reward is going to be present on screen
     def _set_bar_progress(self, amt):
@@ -228,7 +220,6 @@ class ArchipelagoRewardDisplay(DirectLabel):
     def queue_reward(self, reward: APRewardGift):
         if not reward.shouldDisplay():
             return
-        self._update_count_tier()
         self._play_item_sound()
         self._reward_queue.append(reward)
         self._update_extra_items_remaining()

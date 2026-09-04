@@ -39,40 +39,80 @@ uniform float osl_SpecularStrength;
 uniform float osl_CelShadingMode;
 uniform float osl_DebugMode;
 
+// Per-lamp point-light shadows.  Each virtualized lamp owns one small depth
+// buffer that covers the ground influence area around the fixture; the receiver
+// samples it with the same Gaussian PCF used for the sun.  All four lamps share
+// one texel size because their buffers are created at a common resolution.
+uniform mat4  osl_LampShadowMatrix0;
+uniform mat4  osl_LampShadowMatrix1;
+uniform mat4  osl_LampShadowMatrix2;
+uniform mat4  osl_LampShadowMatrix3;
+uniform sampler2D osl_LampShadowMap0;
+uniform sampler2D osl_LampShadowMap1;
+uniform sampler2D osl_LampShadowMap2;
+uniform sampler2D osl_LampShadowMap3;
+uniform float osl_LampShadowOn0;
+uniform float osl_LampShadowOn1;
+uniform float osl_LampShadowOn2;
+uniform float osl_LampShadowOn3;
+uniform vec2  osl_LampShadowTexel;
+uniform float osl_LampShadowBias;
+uniform float osl_LampShadowSoftness;
+
 varying vec4 vVertexColor;
 varying vec2 vTexcoord;
 varying vec4 vShadow;
 varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
 
-float shadowTap(vec2 uv, float receiverDepth, float bias) {
-    float storedDepth = texture2D(osl_ShadowMap, uv).r;
+float shadowTap(sampler2D shadowMap, vec2 uv, float receiverDepth, float bias) {
+    float storedDepth = texture2D(shadowMap, uv).r;
     float transition = max(0.00016, bias * 0.22);
     return smoothstep(receiverDepth - bias - transition,
                       receiverDepth - bias + transition,
                       storedDepth);
 }
 
-float filteredShadow(vec2 uv, float receiverDepth, float ndl) {
-    vec2 radius = osl_ShadowTexel * osl_ShadowFilterRadius;
-    float slopeBias = osl_ShadowBias * mix(2.4, 1.0, clamp(ndl * 3.0, 0.0, 1.0));
-    float shadow = shadowTap(uv, receiverDepth, slopeBias) * 3.5;
-    shadow += shadowTap(uv + vec2(-radius.x, 0.0), receiverDepth, slopeBias) * 2.0;
-    shadow += shadowTap(uv + vec2( radius.x, 0.0), receiverDepth, slopeBias) * 2.0;
-    shadow += shadowTap(uv + vec2(0.0, -radius.y), receiverDepth, slopeBias) * 2.0;
-    shadow += shadowTap(uv + vec2(0.0,  radius.y), receiverDepth, slopeBias) * 2.0;
-    shadow += shadowTap(uv + vec2(-radius.x * 0.707, -radius.y * 0.707), receiverDepth, slopeBias) * 1.5;
-    shadow += shadowTap(uv + vec2( radius.x * 0.707, -radius.y * 0.707), receiverDepth, slopeBias) * 1.5;
-    shadow += shadowTap(uv + vec2(-radius.x * 0.707,  radius.y * 0.707), receiverDepth, slopeBias) * 1.5;
-    shadow += shadowTap(uv + vec2( radius.x * 0.707,  radius.y * 0.707), receiverDepth, slopeBias) * 1.5;
-    shadow += shadowTap(uv + vec2(-radius.x * 1.45, 0.0), receiverDepth, slopeBias) * 0.75;
-    shadow += shadowTap(uv + vec2( radius.x * 1.45, 0.0), receiverDepth, slopeBias) * 0.75;
-    shadow += shadowTap(uv + vec2(0.0, -radius.y * 1.45), receiverDepth, slopeBias) * 0.75;
-    shadow += shadowTap(uv + vec2(0.0,  radius.y * 1.45), receiverDepth, slopeBias) * 0.75;
+float filteredShadow(sampler2D shadowMap, vec2 uv, float receiverDepth, float ndl, vec2 texel, float radiusScale, float biasScale) {
+    vec2 radius = texel * radiusScale;
+    float slopeBias = biasScale * mix(2.4, 1.0, clamp(ndl * 3.0, 0.0, 1.0));
+    float shadow = shadowTap(shadowMap, uv, receiverDepth, slopeBias) * 3.5;
+    shadow += shadowTap(shadowMap, uv + vec2(-radius.x, 0.0), receiverDepth, slopeBias) * 2.0;
+    shadow += shadowTap(shadowMap, uv + vec2( radius.x, 0.0), receiverDepth, slopeBias) * 2.0;
+    shadow += shadowTap(shadowMap, uv + vec2(0.0, -radius.y), receiverDepth, slopeBias) * 2.0;
+    shadow += shadowTap(shadowMap, uv + vec2(0.0,  radius.y), receiverDepth, slopeBias) * 2.0;
+    shadow += shadowTap(shadowMap, uv + vec2(-radius.x * 0.707, -radius.y * 0.707), receiverDepth, slopeBias) * 1.5;
+    shadow += shadowTap(shadowMap, uv + vec2( radius.x * 0.707, -radius.y * 0.707), receiverDepth, slopeBias) * 1.5;
+    shadow += shadowTap(shadowMap, uv + vec2(-radius.x * 0.707,  radius.y * 0.707), receiverDepth, slopeBias) * 1.5;
+    shadow += shadowTap(shadowMap, uv + vec2( radius.x * 0.707,  radius.y * 0.707), receiverDepth, slopeBias) * 1.5;
+    shadow += shadowTap(shadowMap, uv + vec2(-radius.x * 1.45, 0.0), receiverDepth, slopeBias) * 0.75;
+    shadow += shadowTap(shadowMap, uv + vec2( radius.x * 1.45, 0.0), receiverDepth, slopeBias) * 0.75;
+    shadow += shadowTap(shadowMap, uv + vec2(0.0, -radius.y * 1.45), receiverDepth, slopeBias) * 0.75;
+    shadow += shadowTap(shadowMap, uv + vec2(0.0,  radius.y * 1.45), receiverDepth, slopeBias) * 0.75;
     return shadow / 20.0;
 }
 
+// Project a world-space receiver point through a lamp's shadow matrix and
+// sample its depth buffer with the same Gaussian PCF used for the sun.
+// Returns light visibility in [0,1]; 1.0 means fully lit, out-of-frustum
+// fragments are treated as lit so the shadow never pops along the cone edge.
+float lampShadowFactor(mat4 shadowMatrix, sampler2D shadowMap, float shadowOn) {
+    if (shadowOn < 0.001)
+        return 1.0;
+    vec4 clip = shadowMatrix * vec4(vWorldPos, 1.0);
+    vec3 ndc = clip.xyz / max(abs(clip.w), 1.0e-5);
+    vec3 p = ndc * 0.5 + 0.5;
+    if (p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0
+            && p.z >= 0.0 && p.z <= 1.0) {
+        return filteredShadow(shadowMap, p.xy, p.z, 1.0,
+                              osl_LampShadowTexel, osl_LampShadowSoftness,
+                              osl_LampShadowBias);
+    }
+    return 1.0;
+}
+
 vec3 lampContribution(vec3 lampPos, vec3 lampGroundPos, vec3 lampColor, vec3 normal, vec3 viewDir) {
+
     vec3 delta = lampPos - vWorldPos;
     float distanceToLamp = length(delta);
     if (distanceToLamp >= 24.0)
@@ -131,7 +171,8 @@ void main() {
         dbgCoords = p;
         if (p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0
                 && p.z >= 0.0 && p.z <= 1.0) {
-            float rawShadow = filteredShadow(p.xy, p.z, ndl);
+            float rawShadow = filteredShadow(osl_ShadowMap, p.xy, p.z, ndl,
+                                              osl_ShadowTexel, osl_ShadowFilterRadius, osl_ShadowBias);
             float borderFade = clamp(min(min(p.x, 1.0 - p.x), min(p.y, 1.0 - p.y)) * 8.0, 0.0, 1.0);
             shadow = mix(1.0, rawShadow, borderFade);
             dbgDepth = texture2D(osl_ShadowMap, p.xy).r;
@@ -184,9 +225,13 @@ void main() {
     direct += osl_SunColor * sunSpec * directShadow;
 
     vec3 lamps = lampContribution(osl_LampPosWorld0, osl_LampGroundPos0, osl_LampColor0, normal, viewDir)
-               + lampContribution(osl_LampPosWorld1, osl_LampGroundPos1, osl_LampColor1, normal, viewDir)
-               + lampContribution(osl_LampPosWorld2, osl_LampGroundPos2, osl_LampColor2, normal, viewDir)
-               + lampContribution(osl_LampPosWorld3, osl_LampGroundPos3, osl_LampColor3, normal, viewDir);
+               * lampShadowFactor(osl_LampShadowMatrix0, osl_LampShadowMap0, osl_LampShadowOn0)
+             + lampContribution(osl_LampPosWorld1, osl_LampGroundPos1, osl_LampColor1, normal, viewDir)
+               * lampShadowFactor(osl_LampShadowMatrix1, osl_LampShadowMap1, osl_LampShadowOn1)
+             + lampContribution(osl_LampPosWorld2, osl_LampGroundPos2, osl_LampColor2, normal, viewDir)
+               * lampShadowFactor(osl_LampShadowMatrix2, osl_LampShadowMap2, osl_LampShadowOn2)
+             + lampContribution(osl_LampPosWorld3, osl_LampGroundPos3, osl_LampColor3, normal, viewDir)
+               * lampShadowFactor(osl_LampShadowMatrix3, osl_LampShadowMap3, osl_LampShadowOn3);
 
     float grazing = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.2);
     vec3 skyRim = osl_SkyAmbient * grazing * 0.075;

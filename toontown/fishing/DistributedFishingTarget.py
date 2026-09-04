@@ -15,7 +15,7 @@ from toontown.effects import Bubbles
 
 class DistributedFishingTarget(DistributedNode.DistributedNode):
     notify = DirectNotifyGlobal.directNotify.newCategory('DistributedFishingTarget')
-    radius = 2.5
+    radius = 5.0
 
     def __init__(self, cr):
         DistributedNode.DistributedNode.__init__(self, cr)
@@ -30,7 +30,7 @@ class DistributedFishingTarget(DistributedNode.DistributedNode):
         self.assign(render.attachNewNode('DistributedFishingTarget'))
         shadow = loader.loadModel('phase_3/models/props/drop_shadow')
         shadow.setPos(0, 0, -0.1)
-        shadow.setScale(0.33)
+        shadow.setScale(0.66)
         shadow.setColorScale(1, 1, 1, 0.75)
         shadow.reparentTo(self)
         self.bubbles = Bubbles.Bubbles(self, render)

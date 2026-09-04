@@ -50,6 +50,14 @@ class ToontownChatManager(ChatManager.ChatManager):
             text_pos=(0, -0.09), textMayChange=0, sortOrder=DGG.FOREGROUND_SORT_INDEX, command=self.__apButtonPressed,
             clickSound=self.openScSfx)
         self.apButton.hide()
+        # Group the chat button row together so the player can drag the whole
+        # row around in UI arrange mode.
+        self.chatButtonFrame = DirectFrame(parent=base.a2dTopLeft, relief=None, pos=(0, 0, 0))
+        self.normalButton.reparentTo(self.chatButtonFrame)
+        self.scButton.reparentTo(self.chatButtonFrame)
+        self.apButton.reparentTo(self.chatButtonFrame)
+        from toontown.toontowngui.UIArrangeManager import getUIArrangeManager
+        getUIArrangeManager().registerUnit('chat', self.chatButtonFrame, 'ui-chat-pos', [self.normalButton, self.scButton, self.apButton])
         self.apGui = ArchipelagoConnectGUI.ArchipelagoConnectGUI()
         self.apGui.hide()
         self.apGuiToggled = False
@@ -105,6 +113,8 @@ class ToontownChatManager(ChatManager.ChatManager):
         del self.whisperCancelButton
         self.chatInputWhiteList.destroy()
         del self.chatInputWhiteList
+        self.chatButtonFrame.destroy()
+        del self.chatButtonFrame
 
     def sendSCChatMessage(self, msgIndex, displayType=0):
         ChatManager.ChatManager.sendSCChatMessage(self, msgIndex, displayType)

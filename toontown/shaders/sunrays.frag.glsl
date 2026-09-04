@@ -6,6 +6,8 @@ uniform vec4 rayColor;
 uniform float rayIntensity;
 uniform float time;
 uniform float aspectRatio;
+uniform float fogDensity;   // zone haze: dims and diffuses the shafts
+uniform float sunSize;      // projected sun disc radius (fraction of viewport height)
 
 varying vec2 texcoord;
 
@@ -31,7 +33,11 @@ void main() {
     float dist = length(delta);
     float angle = atan(delta.y, delta.x);
 
-    float radial = pow(clamp(1.0 - dist * 0.92, 0.0, 1.0), 2.15);
+    float fogAmt = max(fogDensity, 0.0);
+    float fogAtten = exp(-fogAmt * 1.7);
+    float discR = max(sunSize, 0.006);
+
+    float radial = pow(clamp(1.0 - dist * 0.90, 0.0, 1.0), 2.0);
     float core = exp(-dist * 7.5) * 0.38;
 
     // Layer broad and fine angular bands for crepuscular-ray structure.
@@ -47,7 +53,16 @@ void main() {
                    * smoothstep(1.0, 0.94, sunPos.x)
                    * horizonFade;
 
-    float shaft = (radial * bands * 0.58 + core) * clamp(rayIntensity, 0.0, 2.0) * edgeFade;
-    float alpha = clamp(shaft * 0.42, 0.0, 0.34);
-    gl_FragColor = vec4(rayColor.rgb * shaft, alpha);
+    // Soft glow anchored at the sun disc itself so the shafts visibly emanate
+    // from the same sun the sky renders.  Haze broadens the glow and dims the
+    // crisp core, mimicking light scattering through fog.
+    float glow = exp(-dist / max(discR * 8.0, 0.02)) * 0.55
+               + exp(-dist * (3.0 + fogAmt * 2.5)) * 0.42;
+    vec3 sunGlow = rayColor.rgb * glow * clamp(rayIntensity, 0.0, 2.0);
+
+    float shaft = (radial * bands * 0.62 + core) * clamp(rayIntensity, 0.0, 2.0) * edgeFade;
+    // Haze scatters the shafts into diffuse glow rather than crisp beams.
+    shaft *= fogAtten * (1.0 + fogAmt * 0.35);
+    float alpha = clamp(shaft * 0.46 + glow * 0.10, 0.0, 0.40);
+    gl_FragColor = vec4(rayColor.rgb * shaft + sunGlow, alpha);
 }

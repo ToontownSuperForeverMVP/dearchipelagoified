@@ -17,64 +17,57 @@ from panda3d.core import (
 )
 
 from direct.showbase.ShowBaseGlobal import globalClock
-import builtins
-base = getattr(builtins, 'base', None)
-
-
-def _syncBase():
-    global base
-    try:
-        candidate = getattr(builtins, 'base', None)
-        if candidate is not None:
-            base = candidate
-    except Exception:
-        pass
-    return base
+from toontown.hood import LightingConfig
 
 
 def _setting(name: str, default):
-    b = _syncBase()
-    settings = getattr(b, 'settings', None) if b is not None else None
-    if settings is None:
-        return default
-    getter = getattr(settings, 'getSetting', None) or getattr(settings, 'get', None)
-    if getter is None:
-        return default
+    """PRC-first generic knob read (see LightingConfig for resolution order)."""
     try:
-        value = getter(name)
-    except TypeError:
-        try:
-            value = getter(name, default)
-        except Exception:
-            return default
+        return LightingConfig.value(name, default)
     except Exception:
         return default
-    return default if value is None else value
 
 
 def _settingBool(name: str, default: bool) -> bool:
-    value = _setting(name, default)
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return value != 0
-    if isinstance(value, str):
-        v = value.strip().lower()
-        if v in ('1', 'true', 'yes', 'on', 'enabled'):
-            return True
-        if v in ('0', 'false', 'no', 'off', 'disabled', ''):
-            return False
-    return bool(value)
+    """PRC-first bool knob read (see LightingConfig for resolution order)."""
+    try:
+        return LightingConfig.boolVal(name, default)
+    except Exception:
+        return default
 
 
 def _settingFloat(name: str, default: float, lo: float, hi: float) -> float:
+    """PRC-first float knob read, clamped to [lo, hi]."""
     try:
-        value = float(_setting(name, default))
+        value = LightingConfig.doubleVal(name, default)
         if not math.isfinite(value):
             value = float(default)
     except Exception:
         value = float(default)
     return max(float(lo), min(float(hi), value))
+
+
+_oslMod = None
+
+
+def _getOutdoorLightingModule():
+    """Lazily import the shared physical-atmosphere helpers.
+
+    OutdoorLighting imports this module at runtime (inside _setupProceduralSky)
+    so we must not import it at module scope here — that would be circular.
+    """
+    global _oslMod
+    if _oslMod is not None:
+        return _oslMod
+    try:
+        from toontown.hood import OutdoorLighting as _m
+    except ImportError:
+        try:
+            import OutdoorLighting as _m
+        except Exception:
+            _m = None
+    _oslMod = _m
+    return _m
 
 _SHADER_DIR_CANDIDATES = (
     os.path.join(os.path.dirname(__file__), '..', 'shaders'),
@@ -247,6 +240,12 @@ class ProceduralSky:
         self._timeOrigin: float | None = None
         self._activeStyle: str = 'playground'
         self._attached: bool = False
+        # Cache of the last pushed shader uniforms.  update() runs every frame
+        # but only a couple of values (time, timeOfDay) change per frame, so we
+        # skip the C++ setShaderInput call whenever a value is unchanged.  This
+        # avoids ~30 redundant driver/state updates per frame with zero impact
+        # on the rendered image.
+        self._lastInputs: dict[str, tuple] = {}
 
     def attach(self, parent: NodePath, style: str = 'playground') -> None:
         if self._attached:
@@ -275,6 +274,7 @@ class ProceduralSky:
             except Exception:
                 self._timeOrigin = None
             self._attached = True
+            self._lastInputs.clear()
             self.update(_ZONE_SKY_DEFAULTS.get(self._activeStyle, _ZONE_SKY_DEFAULTS['playground']), 12.0)
         except Exception:
             try:
@@ -371,6 +371,29 @@ class ProceduralSky:
             sunDiscOn = 1.0 if sunElev > -0.04 else 0.0
             sunKeyColor = keyColor
 
+        # Physical sunlight after Rayleigh + Mie extinction.  The scene's key
+        # light is tinted with the same multiplier (see OutdoorLighting), so the
+        # sun disc / mie glow / clouds here and the light hitting the ground all
+        # warm together as the sun drops.
+        physMul = (1.0, 1.0, 1.0)
+        fogDensity = 0.4
+        fogMatch = 0.0
+        sunAngularRadius = 0.012
+        _osl = _getOutdoorLightingModule()
+        if _osl is not None:
+            try:
+                physMul = _osl._physSunColorMul(float(sunDirWorld.z), turb, nightFactor)
+                fogDensity = _osl._physFogDensity(spec)
+                fogMatch = _osl._physFogMatch()
+                sunAngularRadius = _osl._skySunAngularRadius()
+            except Exception:
+                pass
+        sunLightColor = Vec3(
+            sunKeyColor.x * physMul[0],
+            sunKeyColor.y * physMul[1],
+            sunKeyColor.z * physMul[2],
+        )
+
         moonDirWorld = Vec3(0, 0, 1)
         if moonOn > 0.5 or isPerpetualNight or nightFactor > 0.1:
             moonDirWorld = _hprToDir(moonHpr[0], moonHpr[1])
@@ -397,6 +420,12 @@ class ProceduralSky:
         zenith = zenith * (1.0 - dayStrength * 0.45) + vividZenith * (dayStrength * 0.45)
         cleanHorizon = Vec3(clearColor[0] * 0.90 + 0.08, clearColor[1] * 0.90 + 0.08, clearColor[2] * 0.90 + 0.08)
         horizon = cleanHorizon * (1.0 - dayStrength * 0.55) + vividHorizon * (dayStrength * 0.55)
+        # Lock the sky's horizon to the scene fog colour so distant geometry
+        # fades into exactly the colour the sky shows at the horizon (aerial
+        # perspective).  The shader still adds its own glow on top.
+        if fogMatch > 0.0:
+            fogRGB = Vec3(fogColorV[0], fogColorV[1], fogColorV[2])
+            horizon = horizon * (1.0 - fogMatch) + fogRGB * fogMatch
 
         if style in ('sellbot_hq', 'factory_int'):
             deptSmogTint = Vec3(0.32, 0.24, 0.44)
@@ -421,47 +450,80 @@ class ProceduralSky:
         blindStr = float(spec.get('sunBlindStrength', 0.28))
         blindStr = max(0.0, min(0.40, blindStr)) if nightFactor < 0.3 else 0.0
 
-        try:
-            np = self._skyNp
-            np.setShaderInput('sunDir',          sunDirWorld)
-            np.setShaderInput('sunWorldElev',    sunElev)
-            np.setShaderInput('sunColor',        sunKeyColor)
-            np.setShaderInput('zenithColor',     zenith)
-            np.setShaderInput('horizonColor',    horizon)
-            np.setShaderInput('fogColor',        Vec3(fogColorV[0], fogColorV[1], fogColorV[2]))
-            np.setShaderInput('ambientColor',    Vec3(ambientV[0], ambientV[1], ambientV[2]))
-            np.setShaderInput('fillColor',       Vec3(fillV[0], fillV[1], fillV[2]))
-            np.setShaderInput('rimColor',        Vec3(rimV[0], rimV[1], rimV[2]))
-            np.setShaderInput('rayColor',        Vec3(rayColorV[0], rayColorV[1], rayColorV[2]))
-            np.setShaderInput('rayIntensity',    rayInt)
-            np.setShaderInput('deptSmogTint',    deptSmogTint)
-            np.setShaderInput('cloudCoverage',   cov)
-            np.setShaderInput('cloudSpeed',      spd * _CLOUD_BASE_SPEED)
-            np.setShaderInput('cloudSharpness',  sharp)
-            np.setShaderInput('cloudQuality',    qualityLevel)
-            np.setShaderInput('turbidity',       turb)
-            np.setShaderInput('starBrightness',  effectiveStars)
-            np.setShaderInput('moonEnabled',     1.0 if (moonOn > 0.5 or (isPerpetualNight and style in ('dl', 'dl_street')) or (nightFactor > 0.1 and spec.get('moonEnabled', False))) else 0.0)
-            np.setShaderInput('moonDir',         moonDirWorld)
-            np.setShaderInput('moonColor',       keyColor)
-            np.setShaderInput('moonPhase',       moonPhaseVal)
-            np.setShaderInput('auroraEnabled',   auroraOn)
-            np.setShaderInput('milkyWayStrength', _settingFloat('sky-milky-way-strength', 1.0, 0.0, 2.0) if effectiveStars > 0.01 else 0.0)
-            np.setShaderInput('nightFactor',      nightFactor)
-            np.setShaderInput('twilightFactor',  twilightFactor)
-            np.setShaderInput('cloudShadowStrength', _settingFloat('sky-cloud-shadow-strength', 1.0, 0.0, 2.0))
-            np.setShaderInput('skyExposure',      _settingFloat('sky-exposure', 1.08, 0.55, 1.75))
-            np.setShaderInput('moonAngularRadius', _settingFloat('sky-moon-angular-radius', 0.0105, 0.004, 0.025))
-            np.setShaderInput('time',            self._time)
-            np.setShaderInput('skyScale',        Vec4(*skyScaleV))
-            np.setShaderInput('sunDiscEnabled',   sunDiscOn)
-            np.setShaderInput('sunBlindStrength', blindStr)
-            np.setShaderInput('timeOfDay',        float(timeOfDay) % 24.0)
-        except Exception:
-            pass
+        moonEnabled = 1.0 if (moonOn > 0.5 or (isPerpetualNight and style in ('dl', 'dl_street')) or (nightFactor > 0.1 and spec.get('moonEnabled', False))) else 0.0
+        milkyWay = _settingFloat('sky-milky-way-strength', 1.0, 0.0, 2.0) if effectiveStars > 0.01 else 0.0
+        cloudShadowStrength = _settingFloat('sky-cloud-shadow-strength', 1.0, 0.0, 2.0)
+        skyExposure = _settingFloat('sky-exposure', 1.08, 0.55, 1.75)
+        moonAngularRadius = _settingFloat('sky-moon-angular-radius', 0.0105, 0.004, 0.025)
+        timeOfDayVal = float(timeOfDay) % 24.0
+
+        inputs = {
+            'sunDir':            (round(sunDirWorld.x, 5), round(sunDirWorld.y, 5), round(sunDirWorld.z, 5)),
+            'sunWorldElev':      (sunElev,),
+            'sunColor':          (round(sunKeyColor.x, 4), round(sunKeyColor.y, 4), round(sunKeyColor.z, 4)),
+            'sunLightColor':     (round(sunLightColor.x, 4), round(sunLightColor.y, 4), round(sunLightColor.z, 4)),
+            'zenithColor':       (round(zenith.x, 4), round(zenith.y, 4), round(zenith.z, 4)),
+            'horizonColor':      (round(horizon.x, 4), round(horizon.y, 4), round(horizon.z, 4)),
+            'fogColor':          (round(fogColorV[0], 4), round(fogColorV[1], 4), round(fogColorV[2], 4)),
+            'ambientColor':      (round(ambientV[0], 4), round(ambientV[1], 4), round(ambientV[2], 4)),
+            'fillColor':         (round(fillV[0], 4), round(fillV[1], 4), round(fillV[2], 4)),
+            'rimColor':          (round(rimV[0], 4), round(rimV[1], 4), round(rimV[2], 4)),
+            'rayColor':          (round(rayColorV[0], 4), round(rayColorV[1], 4), round(rayColorV[2], 4)),
+            'rayIntensity':      (rayInt,),
+            'deptSmogTint':      (round(deptSmogTint.x, 4), round(deptSmogTint.y, 4), round(deptSmogTint.z, 4)),
+            'cloudCoverage':     (cov,),
+            'cloudSpeed':        (spd * _CLOUD_BASE_SPEED,),
+            'cloudSharpness':    (sharp,),
+            'cloudQuality':      (qualityLevel,),
+            'turbidity':         (turb,),
+            'fogDensity':        (fogDensity,),
+            'starBrightness':    (effectiveStars,),
+            'moonEnabled':       (moonEnabled,),
+            'moonDir':           (round(moonDirWorld.x, 5), round(moonDirWorld.y, 5), round(moonDirWorld.z, 5)),
+            'moonColor':         (round(keyColor.x, 4), round(keyColor.y, 4), round(keyColor.z, 4)),
+            'moonPhase':         (moonPhaseVal,),
+            'auroraEnabled':     (auroraOn,),
+            'milkyWayStrength':  (milkyWay,),
+            'nightFactor':       (nightFactor,),
+            'twilightFactor':    (twilightFactor,),
+            'cloudShadowStrength': (cloudShadowStrength,),
+            'skyExposure':         (skyExposure,),
+            'moonAngularRadius':   (moonAngularRadius,),
+            'sunAngularRadius':    (sunAngularRadius,),
+            'time':                (self._time,),
+            'skyScale':            (round(skyScaleV[0], 4), round(skyScaleV[1], 4), round(skyScaleV[2], 4), round(skyScaleV[3], 4)),
+            'sunDiscEnabled':      (sunDiscOn,),
+            'sunBlindStrength':    (blindStr,),
+            'timeOfDay':           (timeOfDayVal,),
+        }
+
+        np = self._skyNp
+        for name, key in inputs.items():
+            prev = self._lastInputs.get(name)
+            if prev == key:
+                continue
+            self._lastInputs[name] = key
+            try:
+                if name == 'skyScale':
+                    np.setShaderInput(name, Vec4(*key))
+                elif name in ('sunDir', 'moonDir'):
+                    np.setShaderInput(name, Vec3(*key))
+                elif name in ('sunColor', 'sunLightColor', 'zenithColor', 'horizonColor', 'fogColor',
+                              'ambientColor', 'fillColor', 'rimColor', 'rayColor',
+                              'moonColor'):
+                    np.setShaderInput(name, Vec3(*key))
+                else:
+                    np.setShaderInput(name, key[0])
+            except Exception:
+                pass
 
     def setStyle(self, style: str) -> None:
-        self._activeStyle = style if style in _ZONE_SKY_DEFAULTS else 'playground'
+        newStyle = style if style in _ZONE_SKY_DEFAULTS else 'playground'
+        if newStyle != self._activeStyle:
+            self._activeStyle = newStyle
+            # Force a full re-push on the next update so a changed style can
+            # never ride on cached uniforms from the previous sky.
+            self._lastInputs.clear()
 
     def isActive(self) -> bool:
         return self._attached and self._skyNp is not None and not self._skyNp.isEmpty()
@@ -473,3 +535,4 @@ class ProceduralSky:
         self._attached = False
         self._time     = 0.0
         self._timeOrigin = None
+        self._lastInputs.clear()

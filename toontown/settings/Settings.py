@@ -79,12 +79,36 @@ class Settings:
         "archipelago-chat-timestamps": True,
         "archipelago-chat-max-history": 250,
         "archipelago-chat-auto-show": True,
-        "archipelago-chat-sounds": True,
         "archipelago-chat-animations": True,
         "archipelago-chat-snap": True,
         "archipelago-chat-mentions": True,
         "archipelago-chat-position-lock": False,
         "archipelago-chat-position": [-1.24, 0.50],
+        # Draggable HUD element positions (chat button row, friends list
+        # button, laff meter and stickerbook button).  Each is an [x, z] pair
+        # in aspect2d coordinates; [None, None] means "use the default spot".
+        "ui-chat-pos": [None, None],
+        "ui-friends-pos": [None, None],
+        "ui-laff-pos": [None, None],
+        "ui-stickerbook-pos": [None, None],
+        # Chat panel appearance: any hex colour and any installed system font.
+        "archipelago-chat-font": "Default",
+        "archipelago-chat-text-color": "#F5F7FF",
+        "archipelago-chat-bg-color": "#0B132B",
+        "archipelago-chat-accent-color": "#1490E0",
+        # "Auto" for a colour means "follow the panel accent/accent-dark".
+        "archipelago-chat-header-color": "Auto",
+        "archipelago-chat-title-color": "#FFFFFF",
+        "archipelago-chat-channel-ap": "Auto",
+        "archipelago-chat-channel-toon": "#29B8E0",
+        "archipelago-chat-channel-you": "#F2B82E",
+        "archipelago-chat-channel-client": "#8C61EB",
+        "archipelago-chat-channel-error": "#EB3B47",
+        # Archipelago item notification appearance.
+        "ap-reward-font": "Default",
+        "ap-reward-text-color": "#FFFFFF",
+        "ap-reward-bg-color": "#1A1A1A",
+        "ap-reward-text-scale": 1.0,
         'boss-alerts': True,
         'bk-warning': True,
         # Modern outdoor rendering. Missing keys in existing settings files

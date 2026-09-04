@@ -155,11 +155,6 @@ class DistributedRace(DistributedObject.DistributedObject):
         if self.isUrbanTrack:
             self.unloadUrbanTrack()
         if self.geom is not None:
-            try:
-                from toontown.hood import OutdoorLighting
-                OutdoorLighting.end(self.geom)
-            except Exception:
-                pass
             self.geom.hide()
         base.camLens.setFar(self.oldFarPlane)
         DistributedObject.DistributedObject.disable(self)
@@ -798,8 +793,11 @@ class DistributedRace(DistributedObject.DistributedObject):
         self.townGeom.removeNode()
 
     def loadFog(self):
-        # Fog is intentionally disabled on all go-kart maps (see
-        # OutdoorLighting.begin(..., fogEnabled=False) in setupGeom).  This
+        # The outdoor lighting rig (and its real-time sun shadow pass) is
+        # intentionally disabled on all go-kart maps -- setupGeom no longer
+        # calls OutdoorLighting.begin(), because re-rendering the entire
+        # flattened town into a 2048^2 sun-depth buffer every frame was the
+        # dominant GPU cost on City Circuit and Blizzard Boulevard.  This
         # method only keeps the urban-track camera culling and sky tracking
         # that used to accompany the fog: a bounded far plane keeps the huge
         # city geometry from being rendered (the previous dense fog + 650-unit
@@ -912,11 +910,11 @@ class DistributedRace(DistributedObject.DistributedObject):
             base.loader.tick()
 
         self.geom.reparentTo(render)
-        try:
-            from toontown.hood import OutdoorLighting
-            OutdoorLighting.begin(self.geom, style='gs', fogEnabled=False)
-        except Exception:
-            pass
+        # OutdoorLighting is intentionally skipped on all go-kart maps: its
+        # real-time world shadow pass re-renders the whole flattened town into
+        # a 2048^2 sun-depth buffer every frame, which was the dominant GPU
+        # cost on the urban tracks (City Circuit / Blizzard Boulevard).  Races
+        # render flat-lit instead, which keeps them fast on modest hardware.
         if self.reversed:
             lapStartPos = self.geom.find('**/lap_start_rev').getPos()
         else:

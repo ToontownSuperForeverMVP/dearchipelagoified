@@ -3,9 +3,11 @@
 uniform vec3  sunDir;
 uniform float sunWorldElev;
 uniform vec3  sunColor;
+uniform vec3  sunLightColor;   // sunColor after Rayleigh+Mie extinction (matches scene key light)
 uniform vec3  zenithColor;
 uniform vec3  horizonColor;
 uniform vec3  fogColor;
+uniform float fogDensity;      // 0..~1.4 zone fog density for aerial perspective
 uniform vec3  ambientColor;
 uniform vec3  fillColor;
 uniform vec3  rimColor;
@@ -29,6 +31,7 @@ uniform float twilightFactor;
 uniform float cloudShadowStrength;
 uniform float skyExposure;
 uniform float moonAngularRadius;
+uniform float sunAngularRadius;
 uniform float time;
 uniform vec4  skyScale;
 uniform float sunDiscEnabled;
@@ -169,9 +172,17 @@ void main() {
     float rayPhase = _rayleigh(cosTheta);
     vec3 rayleighCol = betaRayleigh * rayPhase * sunTrans * (1.45 * sunPower);
 
+    // sunLightColor already includes Rayleigh + Mie extinction (computed in
+    // Python from the same model), so the glow, disc and clouds all agree with
+    // the colour of the scene's directional key light.  Fall back to the local
+    // transmittance if the uniform was never pushed.
+    vec3 sunLight = (length(sunLightColor) > 1e-4) ? sunLightColor : sunColor.rgb * sunTrans;
+
     float miePhase = _mieDual(cosTheta, 0.84, 0.50, 0.68);
-    float mieIntensity = turbidity * 0.095;
-    vec3 mieCol = sunColor.rgb * (miePhase * mieIntensity) * sunTrans * sunPower;
+    // Haze strengthens the forward-scattered glow so the sun blooms into the
+    // sky instead of floating as an isolated disc.
+    float mieIntensity = turbidity * 0.095 * (1.0 + max(fogDensity, 0.0) * 0.35);
+    vec3 mieCol = sunLight * (miePhase * mieIntensity) * sunPower;
 
     vec2  sunAz    = vec2(sunDir.x, sunDir.y);
     float sunAzLen = max(0.001, length(sunAz));
@@ -242,9 +253,13 @@ void main() {
         sky = mix(sky, horizonColor * 0.75, below);
     }
 
-    float horizonHaze = exp(-abs(elev) * 15.0)
-                      * mix(0.32, 0.16, nightFactor);
-    sky = mix(sky, fogColor, clamp(horizonHaze, 0.0, 0.34));
+    // Fog pushes aerial perspective into the sky itself: hazy zones melt the
+    // horizon into the fog colour, clear zones stay crisp.  fogDensity == 0
+    // reproduces the legacy behaviour exactly.
+    float fogAmt = max(fogDensity, 0.0);
+    float hazeStr = mix(0.32, 0.16, nightFactor) * (1.0 + fogAmt * 0.9);
+    float horizonHaze = exp(-abs(elev) * (15.0 - fogAmt * 6.0)) * hazeStr;
+    sky = mix(sky, fogColor, clamp(horizonHaze, 0.0, 0.34 + fogAmt * 0.16));
 
     if (starBrightness > 0.02 && elev > 0.04) {
         vec3 galNormal = normalize(vec3(0.45, 0.35, 0.82));
@@ -391,7 +406,7 @@ void main() {
         }
         vec3  litTop    = mix(
             mix(nightSmogTop, vec3(2.45, 2.50, 2.60), sunPower),
-            max(sunColor.rgb, vec3(0.95)) * 2.25,
+            max(sunLight, vec3(0.95)) * 2.25,
             0.20 * sunPower
         );
 
@@ -442,6 +457,15 @@ void main() {
                              sunPower);
         cloudRGB = max(cloudRGB, cloudFill);
 
+        // Aerial perspective: in foggy zones the cloud deck fades into the
+        // scene fog colour toward the horizon, so distant clouds read as part
+        // of the atmosphere instead of floating geometry.
+        if (fogDensity > 0.02) {
+            float cloudHaze = exp(-abs(elev) * (5.0 + fogDensity * 18.0))
+                            * clamp(fogDensity * 0.85, 0.0, 1.0);
+            cloudRGB = mix(cloudRGB, fogColor, clamp(cloudHaze, 0.0, 0.5));
+        }
+
         cloudAlpha = shaped;
     }
 
@@ -460,10 +484,9 @@ void main() {
 
     if (sunDiscEnabled > 0.5 && sunElevW > -0.05 && sunPower > 0.01) {
         float angDist = acos(clamp(cosTheta, -1.0, 1.0));
-        // 0.006 rad is a subtly stylised ~0.7 degree radius.  The previous
-        // 0.024 value made the disc over five degrees wide, most noticeable at
-        // sunset when the horizon provides a size reference.
-        float sunR    = 0.0060;
+        // Angular radius of the disc in radians.  The base 0.006 rad is a
+        // subtly stylised ~0.7 degree sun; sky-sun-size scales it up.
+        float sunR    = max(sunAngularRadius, 0.0060);
 
         float refractFlatten = clamp(1.0 - max(0.0, 0.10 - sunElevW) * 4.5, 0.65, 1.0);
         vec3 sunDirLocal = dir - sunDir;
@@ -476,22 +499,29 @@ void main() {
                       * smoothstep(0.0, 1.0, limbT);
         float limbDrk = 1.0 - 0.65 * (1.0 - sqrt(max(0.0, limbT)));
 
+        // The sun collides with the atmosphere: haze dims the crisp disc and
+        // spreads its glow into a soft bloom — a real hazy/setting sun.
+        float sunFogAmt  = max(fogDensity, 0.0);
+        float sunFogDim  = exp(-sunFogAmt * 2.0);
+        float haloSpread = 1.0 + sunFogAmt * 1.1;
+
         float sunsetT = clamp(1.0 - sunElevW * 5.5, 0.0, 1.0);
         vec3  discCol = mix(
             vec3(1.00, 0.98, 0.92) * 5.5,
             vec3(1.00, 0.44, 0.05) * 3.2,
             sunsetT
-        ) * limbDrk * sunPower;
+        ) * limbDrk * sunPower * sunFogDim;
 
-        float c1 = exp(-angDist * 650.0) * 0.95;
-        float c2 = exp(-angDist * 210.0) * 0.35;
-        float c3 = exp(-angDist *  65.0) * 0.12;
-        float c4 = exp(-angDist *  18.0) * 0.035;
-        vec3  coronaCol = sunColor.rgb * (c1 + c2 + c3 + c4) * sunPower;
+        float c1 = exp(-angDist * 650.0 / haloSpread) * 0.95;
+        float c2 = exp(-angDist * 210.0 / haloSpread) * 0.35;
+        float c3 = exp(-angDist *  65.0 / haloSpread) * 0.12;
+        float c4 = exp(-angDist *  18.0 / haloSpread) * 0.035;
+        vec3  coronaCol = sunLight * (c1 + c2 + c3 + c4)
+                        * sunPower * mix(1.0, 1.6, min(1.0, sunFogAmt));
 
         float streakH = exp(-abs(dir.x - sunDir.x) * 120.0) * exp(-max(0.0, 1.0 - cosTheta) * 140.0) * 0.18;
         float streakV = exp(-abs(dir.z - sunDir.z) * 90.0) * exp(-max(0.0, 1.0 - cosTheta) * 150.0) * 0.28;
-        vec3  streakCol = sunColor.rgb * (streakH + streakV) * sunPower;
+        vec3  streakCol = sunLight * (streakH + streakV) * sunPower * sunFogDim;
 
         float blindAmt  = pow(max(0.0, cosTheta), 55.0) * sunBlindStrength * sunPower;
         vec3  blindCol  = vec3(
@@ -499,6 +529,7 @@ void main() {
             blindAmt * 0.90,
             blindAmt * 0.65
         );
+        blindCol *= mix(1.0, 1.5, min(1.0, sunFogAmt));
 
         float sunVis = (1.0 - cloudAlpha)
                      * clamp((sunElevW + 0.05) * 10.0, 0.0, 1.0) * sunPower;

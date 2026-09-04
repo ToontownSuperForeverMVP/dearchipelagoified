@@ -125,8 +125,15 @@ class ShtikerBook(DirectFrame, StateData.StateData):
         self.resetFrameSize()
         self.bookOpenButton = DirectButton(image=(bookModel.find('**/BookIcon_CLSD'), bookModel.find('**/BookIcon_OPEN'), bookModel.find('**/BookIcon_RLVR')), relief=None, pos=(-0.158, 0, 0.17), parent=base.a2dBottomRight, scale=0.305, command=self.__open)
         self.bookCloseButton = DirectButton(image=(bookModel.find('**/BookIcon_OPEN'), bookModel.find('**/BookIcon_CLSD'), bookModel.find('**/BookIcon_RLVR2')), relief=None, pos=(-0.158, 0, 0.17), parent=base.a2dBottomRight, scale=0.305, command=self.__close)
+        # Group the open/close buttons together so UI arrange mode moves them
+        # as one unit.
+        self.bookButtonFrame = DirectFrame(parent=base.a2dBottomRight, relief=None, pos=(0, 0, 0))
+        self.bookOpenButton.reparentTo(self.bookButtonFrame)
+        self.bookCloseButton.reparentTo(self.bookButtonFrame)
         self.bookOpenButton.hide()
         self.bookCloseButton.hide()
+        from toontown.toontowngui.UIArrangeManager import getUIArrangeManager
+        getUIArrangeManager().registerUnit('stickerbook', self.bookButtonFrame, 'ui-stickerbook-pos', [self.bookOpenButton, self.bookCloseButton])
         self.nextArrow = DirectButton(parent=self, relief=None, image=(bookModel.find('**/arrow_button'), bookModel.find('**/arrow_down'), bookModel.find('**/arrow_rollover')), scale=(0.1, 0.1, 0.1), pos=(0.838, 0, -0.661), command=self.__pageChange, extraArgs=[1])
         self.prevArrow = DirectButton(parent=self, relief=None, image=(bookModel.find('**/arrow_button'), bookModel.find('**/arrow_down'), bookModel.find('**/arrow_rollover')), scale=(-0.1, 0.1, 0.1), pos=(-0.838, 0, -0.661), command=self.__pageChange, extraArgs=[-1])
         bookModel.removeNode()
@@ -142,6 +149,8 @@ class ShtikerBook(DirectFrame, StateData.StateData):
         del self.bookOpenButton
         self.bookCloseButton.destroy()
         del self.bookCloseButton
+        self.bookButtonFrame.destroy()
+        del self.bookButtonFrame
         self.nextArrow.destroy()
         del self.nextArrow
         self.prevArrow.destroy()

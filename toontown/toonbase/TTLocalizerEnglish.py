@@ -9968,6 +9968,7 @@ OptionsPageTabs = {
     3: "Video",
     4: "Audio",
     5: "Chat",
+    6: "Items",
 }
 
 OptionNames = {
@@ -9992,15 +9993,31 @@ OptionNames = {
     "archipelago-chat-timestamps": "Message Timestamps",
     "archipelago-chat-max-history": "Saved Message History",
     "archipelago-chat-auto-show": "Open Panel for New AP Messages",
-    "archipelago-chat-sounds": "Chat Sound Effects",
     "archipelago-chat-animations": "Chat Animations",
     "archipelago-chat-snap": "Snap Panel to Screen Edges",
     "archipelago-chat-mentions": "Highlight Mentions of You",
     "archipelago-chat-position-lock": "Lock Panel Position",
+    "archipelago-chat-font": "Chat Text Font",
+    "archipelago-chat-text-color": "Chat Text Color",
+    "archipelago-chat-bg-color": "Chat Background Color",
+    "archipelago-chat-accent-color": "Chat Accent Color",
+    "archipelago-chat-header-color": "Chat Header Color",
+    "archipelago-chat-title-color": "Chat Title Color",
+    "archipelago-chat-channel-ap": "AP Channel Color",
+    "archipelago-chat-channel-toon": "Toon Channel Color",
+    "archipelago-chat-channel-you": "You Channel Color",
+    "archipelago-chat-channel-client": "Client Channel Color",
+    "archipelago-chat-channel-error": "Error Channel Color",
+    # Items (Archipelago item notification)
+    "ap-reward-font": "Item Notification Font",
+    "ap-reward-text-color": "Item Notification Text Color",
+    "ap-reward-bg-color": "Item Notification Background Color",
+    "ap-reward-text-scale": "Item Notification Text Size",
     "color-blind-mode": "Colorblind Mode",
     "want-legacy-models": "Toggle TTO Species Models*",
     'laff-display': "Toggle Overhead Laff Meter",
     'battle-speed': "Battle Speed Multiplier",
+    'arrange-ui': "Arrange UI",
 
     # Privacy
     "competitive-boss-scoring": "Want Competitive Boss Scoring",
@@ -10122,5 +10139,7 @@ OptionTonemapMode = [
 OptionEnabled = "Enabled"
 OptionDisabled = "Disabled"
 OptionRefresh = "Refresh"
+OptionArrangeUI = "Arrange UI"
+UIArrangeBanner = "Press ESC to finish arranging your UI"
 WinConditionMet = 'Congratulations, you have completed your goal! You may now talk to Flippy to redeem your reward!'
 RefreshDialogMsg = "Refreshing audio devices..."

@@ -1,8 +1,27 @@
-from panda3d.core import *
-from toontown.toonbase.ToontownGlobals import *
+from __future__ import annotations
+
+from panda3d.core import BitMask32, CompassEffect, NodePath
 from direct.task.Task import Task
+from direct.task.TaskManagerGlobal import taskMgr
+from direct.showbase.ShowBaseGlobal import globalClock
 from direct.directnotify import DirectNotifyGlobal
 notify = DirectNotifyGlobal.directNotify.newCategory('SkyUtil')
+
+
+def _base():
+    """Return the live ShowBase instance (game-agnostic: no game imports)."""
+    try:
+        import builtins
+        b = getattr(builtins, 'base', None)
+        if b is not None:
+            return b
+    except Exception:
+        pass
+    try:
+        from direct.showbase import ShowBaseGlobal as _SBG
+        return getattr(_SBG, 'base', None)
+    except Exception:
+        return None
 
 
 def _wantProceduralSky():
@@ -12,6 +31,7 @@ def _wantProceduralSky():
         return OutdoorLighting._wantProceduralSky()
     except Exception:
         return False
+
 
 def cloudSkyTrack(task):
     task.h += globalClock.getDt() * 0.25
@@ -23,7 +43,13 @@ def cloudSkyTrack(task):
     return Task.cont
 
 
-def startCloudSky(hood, parent = camera, effects = CompassEffect.PRot | CompassEffect.PZ):
+def startCloudSky(hood, parent=None, effects=CompassEffect.PRot | CompassEffect.PZ):
+    if parent is None:
+        b = _base()
+        parent = getattr(b, 'camera', None) if b is not None else None
+    if parent is None:
+        notify.warning('startCloudSky: no camera parent available; sky not attached')
+        return
     hood.sky.setDepthTest(0)
     hood.sky.setDepthWrite(0)
     hood.sky.setBin('background', 100)

@@ -22,9 +22,11 @@ from direct.interval.LerpInterval import (LerpColorScaleInterval,
 from direct.interval.MetaInterval import Parallel, Sequence
 from direct.task import Task
 from otp.chat.TalkGlobals import AVATAR_THOUGHT, TALK_OPEN
-from panda3d.core import TextNode, TextProperties, TextPropertiesManager, Vec3, Vec4
+from panda3d.core import TextNode, TextProperties, TextPropertiesManager, TransparencyAttrib, Vec3, Vec4
 
 from toontown.archipelago.apclient.in_game_command_processor import InGameArchipelagoCommandProcessor
+from toontown.settings.ChatTheme import is_auto_color, load_font, parse_hex_color
+
 
 
 class MarkdownFormatter:
@@ -297,11 +299,25 @@ class ArchipelagoOnscreenLog(DirectFrame):
     }
     PROPERTY_PATTERN = re.compile(r"\x01[^\x01]*\x01|\x02")
     HEADER_HEIGHT = 0.085
-    INPUT_BASE_HEIGHT = 0.096
+    # Compact composer height; keeps the bottom of the panel small.
+    INPUT_BASE_HEIGHT = 0.082
     INPUT_LINE_HEIGHT = 0.049
     MAX_INPUT_LINES = 12
     MIN_MESSAGE_HEIGHT = 0.15
-    PANEL_PADDING = 0.025
+    PANEL_PADDING = 0.012
+    # Side length of the square SEND button; the resize grip is drawn the
+    # same height and size so the bottom row reads as two matching controls.
+    SEND_SIZE = 0.082
+    # Diagonal trio of drag-hint dots drawn inside the resize grip.
+    GRIP_DOT_POSITIONS = ((-0.026, 0.026), (0.0, 0.0), (0.026, -0.026))
+    GRIP_DOT_SIZE = 0.005
+    # Thickness of the accent outline drawn around the whole panel.
+    OUTLINE_WIDTH = 0.018
+    # How much narrower the message canvas is kept than the log frame (in
+    # aspect2d units).  Without this the horizontal scroll bar shows whenever
+    # the vertical one does, leaving a light-gray bar between the log and the
+    # composer.
+    SCROLLBAR_GUARD = 0.030
     # How close (in aspect2d units) the panel must be to a screen edge before
     # it snaps flush during a drag for that magnetic feel.
     SNAP_THRESHOLD = 0.045
@@ -311,6 +327,7 @@ class ArchipelagoOnscreenLog(DirectFrame):
             self,
             parent=aspect2d,
             relief=DGG.FLAT,
+            state=DGG.NORMAL,
             sortOrder=DGG.FOREGROUND_SORT_INDEX - 5,
         )
 
@@ -330,21 +347,13 @@ class ArchipelagoOnscreenLog(DirectFrame):
         # Drag-to-resize grip state.
         self._resizing = False
         self._resizeTaskName = self.taskName("resize")
-        self._resizeStart = (0.0, 0.0)
-        self._resizeStartDims = (0.0, 0.0)
+        self._resizeCornerOffset = (0.0, 0.0)
         self._resizeTopLeft = (0.0, 0.0)
         self._gripHoverScale = 1.0
         self._nextMessageRebuild = None
         # Names a message may use to address the local player; computed lazily
         # so it keeps up if they rename mid-session.
         self._mentionNames = None
-        # Subtle chat sound effects, loaded once and reused.
-        self._sfxChatIn = base.loader.loadSfx(
-            "phase_3.5/audio/sfx/GUI_whisper_3.ogg")
-        self._sfxChatOut = base.loader.loadSfx(
-            "phase_3.5/audio/sfx/GUI_quicktalker.ogg")
-        self._sfxOpen = base.loader.loadSfx(
-            "phase_3/audio/sfx/GUI_balloon_popup.ogg")
         self._panelSequence = None
         self._buttonIntervals = {}
         self._commandHistory = []
@@ -360,6 +369,20 @@ class ArchipelagoOnscreenLog(DirectFrame):
         self._height = 0.72
         self._accent = self.THEMES["Blue"][0]
         self._accentDark = self.THEMES["Blue"][1]
+        # Customisable chat appearance (font + colours), refreshed by
+        # ``applySettings`` whenever the player changes an option.
+        self._chatFont = None
+        self._chatTextColor = Vec4(0.96, 0.97, 1, 1)
+        self._chatBgColor = Vec4(0.018, 0.025, 0.045, 1)
+        self._headerColor = Vec4(0.04, 0.25, 0.39, 1)
+        self._chatTitleColor = Vec4(1, 1, 1, 1)
+        self._channelColors = {
+            "AP": self._accent,
+            "TOON": Vec4(0.16, 0.72, 0.88, 1),
+            "YOU": Vec4(0.95, 0.72, 0.18, 1),
+            "CLIENT": Vec4(0.55, 0.38, 0.92, 1),
+            "ERROR": Vec4(0.92, 0.23, 0.28, 1),
+        }
 
         self.header = DirectFrame(parent=self, relief=DGG.FLAT, state=DGG.NORMAL)
         self.header.bind(DGG.B1PRESS, self._startDrag)
@@ -371,6 +394,9 @@ class ArchipelagoOnscreenLog(DirectFrame):
             image="phase_14/maps/ap_icon.png",
             image_scale=0.030,
         )
+        # The AP icon is an RGBA png; without an explicit MAlpha attrib its
+        # alpha channel is ignored and it renders as an opaque black block.
+        self.apIcon.setTransparency(TransparencyAttrib.MAlpha)
 
         self.title = DirectLabel(
             parent=self.header,
@@ -380,14 +406,6 @@ class ArchipelagoOnscreenLog(DirectFrame):
             text_scale=0.043,
             text_fg=(1, 1, 1, 1),
             text_shadow=(0, 0, 0, 0.45),
-        )
-        self.connectionButton = DirectButton(
-            parent=self.header,
-            relief=DGG.FLAT,
-            text="AP SETUP",
-            text_scale=0.029,
-            text_fg=(1, 1, 1, 1),
-            command=self._toggleConnectionPanel,
         )
         self.closeButton = DirectButton(
             parent=self.header,
@@ -448,7 +466,6 @@ class ArchipelagoOnscreenLog(DirectFrame):
             text_scale=0.036,
             text_fg=(1, 1, 1, 1),
             command=self._submit,
-            clickSound=self._sfxChatOut,
         )
         # Corner grip used to resize the panel on the fly without the options
         # page. Kept minimal: a quiet little handle at the bottom-right.
@@ -464,8 +481,8 @@ class ArchipelagoOnscreenLog(DirectFrame):
         # A tiny diagonal trio of dots hints at draggability without adding
         # weight to the minimal design.
         self._gripDots = []
-        dotSize = 0.0045
-        for offset in ((-0.018, 0.018), (0.0, 0.0), (0.018, -0.018)):
+        dotSize = self.GRIP_DOT_SIZE
+        for offset in self.GRIP_DOT_POSITIONS:
             dot = DirectLabel(
                 parent=self, relief=DGG.FLAT,
                 frameColor=(1, 1, 1, 0.55),
@@ -473,9 +490,15 @@ class ArchipelagoOnscreenLog(DirectFrame):
             )
             dot.setPos(offset[0], 0, offset[1])
             self._gripDots.append(dot)
+        # A thick accent outline wraps the whole panel (header included) so
+        # the chat window reads as one connected piece.  The bars live just
+        # outside the panel's own frame, so they follow drags and resizes
+        # automatically; applySettings gives them their final size/color.
+        self.outlineBars = {}
+        for name in ("top", "bottom", "left", "right"):
+            self.outlineBars[name] = DirectFrame(parent=self, relief=DGG.FLAT)
         self.applySettings(initial=True)
         self._commandProcessor = InGameArchipelagoCommandProcessor(self, base.localAvatar)
-        self._bindAnimatedButton(self.connectionButton)
         self._bindAnimatedButton(self.closeButton)
         self._bindAnimatedButton(self.sendButton)
         self.accept("NewOpenMessage", self._handleToonMessage)
@@ -486,6 +509,11 @@ class ArchipelagoOnscreenLog(DirectFrame):
         self.accept("escape", self._handleEscape)
         self.accept("control-c", self._copyToClipboard)
         self.accept("control-v", self._pasteFromClipboard)
+        # DirectFrame subclasses must run initialiseoptions themselves.  Without
+        # it fInit stays 1, updateFrameStyle never pushes the panel's frame
+        # style to the guiItem, and the panel's background silently never
+        # renders (leaving visible gaps where the game world shows through).
+        self.initialiseoptions(ArchipelagoOnscreenLog)
 
     def destroy(self):
         self._stopDrag()
@@ -496,17 +524,10 @@ class ArchipelagoOnscreenLog(DirectFrame):
         for dot in self._gripDots:
             dot.destroy()
         self._gripDots = []
+        for bar in self.outlineBars.values():
+            bar.destroy()
+        self.outlineBars = {}
         self.resizeGrip.destroy()
-        if self._sfxChatIn:
-            self._sfxChatIn.stop()
-        if self._sfxChatOut:
-            self._sfxChatOut.stop()
-        if self._sfxOpen:
-            self._sfxOpen.stop()
-        self._sfxChatIn = None
-        self._sfxChatOut = None
-        self._sfxOpen = None
-        self.connectionButton.destroy()
         self.closeButton.destroy()
         self.apIcon.destroy()
         self.title.destroy()
@@ -546,18 +567,6 @@ class ArchipelagoOnscreenLog(DirectFrame):
         if channel == "AP":
             self._pulseAccent()
 
-        # A short, unobtrusive blip for incoming messages (typing our own chat
-        # is already its own audio event). A subtle click plays for commands
-        # that produce a direct reply, so they never feel silent. Mentions get
-        # a touch more presence so an addressed message never slips by.
-        if self._animationsEnabled() and self._soundsEnabled():
-            if isMention:
-                self._playChatInSound(volume=0.7)
-            elif channel == "AP":
-                self._playChatInSound()
-            elif channel in ("CLIENT", "ERROR"):
-                self._playChatInSound(volume=0.45)
-
         if self.isHidden():
             if channel == "AP" and base.settings.get("archipelago-chat-auto-show"):
                 self.showAllEntries()
@@ -592,45 +601,118 @@ class ArchipelagoOnscreenLog(DirectFrame):
         theme = base.settings.get("archipelago-chat-theme")
         self._accent, self._accentDark = self.THEMES.get(theme, self.THEMES["Blue"])
 
+        # An explicit accent colour overrides the preset themes, so the player
+        # can truly pick any accent they want.
+        _accentHex = base.settings.get("archipelago-chat-accent-color")
+        if _accentHex and str(_accentHex).strip().lower() not in ("", "default"):
+            customAccent = parse_hex_color(_accentHex, self._accent)
+            self._accent = customAccent
+            self._accentDark = Vec4(customAccent[0] * 0.42, customAccent[1] * 0.42,
+                                    customAccent[2] * 0.42, 1)
+
+        # Font + colours shared by the title, message rows, and the composer.
+        self._chatFont = load_font(base.settings.get("archipelago-chat-font"))
+        self._chatTextColor = parse_hex_color(base.settings.get("archipelago-chat-text-color"),
+                                              self._chatTextColor)
+        self._chatBgColor = parse_hex_color(base.settings.get("archipelago-chat-bg-color"),
+                                            self._chatBgColor)
+
+        # Header, title, and per-channel colours are each independently
+        # customizable; header/AP can be set to 'Auto' to follow the accent.
+        headerColor = base.settings.get("archipelago-chat-header-color")
+        if is_auto_color(headerColor):
+            self._headerColor = self._accentDark
+        else:
+            self._headerColor = parse_hex_color(headerColor, self._accentDark)
+
+        titleColor = base.settings.get("archipelago-chat-title-color")
+        self._chatTitleColor = (Vec4(1, 1, 1, 1) if is_auto_color(titleColor)
+                                else parse_hex_color(titleColor, Vec4(1, 1, 1, 1)))
+
+        self._channelColors = {
+            "AP": self._resolveChannelColor("ap", self._accent),
+            "TOON": self._resolveChannelColor("toon", Vec4(0.16, 0.72, 0.88, 1)),
+            "YOU": self._resolveChannelColor("you", Vec4(0.95, 0.72, 0.18, 1)),
+            "CLIENT": self._resolveChannelColor("client", Vec4(0.55, 0.38, 0.92, 1)),
+            "ERROR": self._resolveChannelColor("error", Vec4(0.92, 0.23, 0.28, 1)),
+        }
+
         backgroundEnabled = bool(base.settings.get("archipelago-log-bg"))
         bodyAlpha = opacity if backgroundEnabled else 0.0
-        self["frameColor"] = (0.018, 0.025, 0.045, bodyAlpha)
+        self["frameColor"] = Vec4(self._chatBgColor[0], self._chatBgColor[1],
+                                   self._chatBgColor[2], bodyAlpha)
         self["frameSize"] = (-self._width / 2, self._width / 2, -self._height / 2, self._height / 2)
+
+        self._applyFontTo(self.title, self.input, self.sendButton, self.closeButton)
+        self.title["text_fg"] = self._chatTitleColor
+        self.input["text_fg"] = self._chatTextColor
 
         top = self._height / 2
         bottom = -self._height / 2
         halfWidth = self._width / 2
-        self.header["frameColor"] = self._withAlpha(self._accentDark, max(0.78, opacity))
+        self.header["frameColor"] = self._withAlpha(self._headerColor, max(0.78, opacity))
         self.header["frameSize"] = (-halfWidth, halfWidth, -self.HEADER_HEIGHT / 2, self.HEADER_HEIGHT / 2)
         self.header.setPos(0, 0, top - self.HEADER_HEIGHT / 2)
         self.accentStrip["frameColor"] = self._withAlpha(self._accent, 0.95)
         self.accentStrip["frameSize"] = (-0.006, 0.006, -self._height / 2, self._height / 2)
         self.accentStrip.setPos(-halfWidth + 0.006, 0, 0)
-        self.apIcon.setPos(-halfWidth + 0.047, 0, 0)
-        self.title.setPos(-halfWidth + 0.110, 0, -0.012)
-        self.connectionButton["frameColor"] = self._withAlpha(self._accent, 0.86)
-        self.connectionButton["frameSize"] = (-0.090, 0.090, -0.028, 0.028)
-        self.connectionButton.setPos(halfWidth - 0.150, 0, 0)
+        # Header contents all hang from the header's centerline; the title and
+        # button text are nudged down a touch so their optical center (not
+        # their baseline) lines up with the AP icon and the buttons.
+        self.apIcon["image_scale"] = 0.040
+        self.apIcon.setPos(-halfWidth + 0.062, 0, 0)
+        self.title.setPos(-halfWidth + 0.122, 0, -0.013)
         self.closeButton["frameColor"] = (1, 1, 1, 0.10)
         self.closeButton["frameSize"] = (-0.025, 0.025, -0.025, 0.025)
+        self.closeButton["text_pos"] = (0, -0.014)
         self.closeButton.setPos(halfWidth - 0.028, 0, 0)
 
-        self.inputBackdrop["frameColor"] = (0.025, 0.035, 0.060, max(0.70, opacity))
+        self.inputBackdrop["frameColor"] = Vec4(self._chatBgColor[0], self._chatBgColor[1],
+                                                self._chatBgColor[2], max(0.70, opacity))
         self.input["frameColor"] = (0, 0, 0, 0)
         self.sendButton["frameColor"] = self._withAlpha(self._accent, 0.95)
-        self.messageFrame["frameColor"] = (0.02, 0.03, 0.052, bodyAlpha * 0.72)
+        self.sendButton["text_pos"] = (0, -0.011)
+        self.messageFrame["frameColor"] = Vec4(self._chatBgColor[0], self._chatBgColor[1],
+                                               self._chatBgColor[2], bodyAlpha * 0.72)
         self.messageFrame["verticalScroll_frameColor"] = self._withAlpha(self._accentDark, 0.85)
         self.messageFrame["verticalScroll_thumb_frameColor"] = self._withAlpha(self._accent, 0.95)
+        # The horizontal scroll bar never shows (the canvas is kept narrower
+        # than the frame), but theme it anyway so it can never appear as a
+        # light-gray strip between the log and the composer.
+        self.messageFrame["horizontalScroll_frameColor"] = self._withAlpha(self._accentDark, 0.85)
+        self.messageFrame["horizontalScroll_thumb_frameColor"] = self._withAlpha(self._accent, 0.95)
+        self.messageFrame["horizontalScroll_incButton_relief"] = None
+        self.messageFrame["horizontalScroll_decButton_relief"] = None
+        # The thick outline around the entire panel, drawn just outside the
+        # panel's own frame so it visually connects the header to the sides.
+        halfHeight = self._height / 2
+        outlineWidth = self.OUTLINE_WIDTH
+        outlineColor = self._withAlpha(self._accent, 0.95)
+        for name, frameSize, pos in (
+            ("top", (-halfWidth - outlineWidth, halfWidth + outlineWidth, 0, outlineWidth),
+             (0, 0, halfHeight)),
+            ("bottom", (-halfWidth - outlineWidth, halfWidth + outlineWidth, -outlineWidth, 0),
+             (0, 0, -halfHeight)),
+            ("left", (-outlineWidth, 0, -halfHeight - outlineWidth, halfHeight + outlineWidth),
+             (-halfWidth, 0, 0)),
+            ("right", (0, outlineWidth, -halfHeight - outlineWidth, halfHeight + outlineWidth),
+             (halfWidth, 0, 0)),
+        ):
+            bar = self.outlineBars[name]
+            bar["frameColor"] = outlineColor
+            bar["frameSize"] = frameSize
+            bar.setPos(*pos)
+
         self._updateComposerLayout(rebuildMessages=rebuildMessages)
 
         # Resize has a dedicated slot beside SEND, so their hit targets never
-        # overlap. It remains available even when position dragging is locked.
-        gripSize = 0.027
+        # overlap. The grip is the same height and size as the square SEND
+        # button. It remains available even when position dragging is locked.
+        gripSize = self.SEND_SIZE / 2
         self.resizeGrip["frameColor"] = self._withAlpha(self._accentDark, 0.88)
         self.resizeGrip["frameSize"] = (-gripSize, gripSize, -gripSize, gripSize)
         self.resizeGrip.setPos(*self._resizeGripPos)
-        for dot, offset in zip(self._gripDots,
-                               ((-0.018, 0.018), (0.0, 0.0), (0.018, -0.018))):
+        for dot, offset in zip(self._gripDots, self.GRIP_DOT_POSITIONS):
             dot.setPos(self._resizeGripPos[0] + offset[0], 0,
                        self._resizeGripPos[2] + offset[1])
 
@@ -660,8 +742,18 @@ class ArchipelagoOnscreenLog(DirectFrame):
         taskMgr.remove(self._resizeTaskName)
         self.acceptOnce("mouse1-up", self._stopResize)
         self.acceptOnce("mouse3-up", self._stopResize)
-        self._resizeStart = event.getMouse()
-        self._resizeStartDims = (self._width, self._height)
+        # Work out the cursor position in aspect2d space using exactly the same
+        # conversion the working position-drag uses (X scaled by the aspect
+        # ratio, Z taken directly). Capturing the *offset* from the cursor to
+        # the panel's bottom-right corner lets the dragged corner follow the
+        # cursor 1:1 on screen with no jump on press, instead of guessing at
+        # coordinate deltas that skew wide or narrow.
+        mouse = event.getMouse()
+        aspect = base.getAspectRatio()
+        mouseX = mouse[0] * aspect
+        mouseZ = mouse[1]
+        self._resizeCornerOffset = (mouseX - (self.getX() + self._width / 2),
+                                    mouseZ - (self.getZ() - self._height / 2))
         self._resizeTopLeft = (self.getX() - self._width / 2,
                                self.getZ() + self._height / 2)
         self._resizing = True
@@ -673,14 +765,16 @@ class ArchipelagoOnscreenLog(DirectFrame):
         if not watcher.hasMouse():
             return Task.cont
         mouse = watcher.getMouse()
-        # Resize by cursor delta from the initial grab, rather than treating
-        # the grip's centre as the panel corner. This keeps the panel steady
-        # when the grip is separated from SEND and avoids a jump on press.
+        aspect = base.getAspectRatio()
+        mouseX = mouse[0] * aspect
+        mouseZ = mouse[1]
         topleftX, topleftZ = self._resizeTopLeft
-        newW = self._resizeStartDims[0] + (mouse[0] - self._resizeStart[0]) * base.getAspectRatio()
-        newH = self._resizeStartDims[1] - (mouse[1] - self._resizeStart[1])
-        newW = max(0.20, newW)
-        newH = max(0.16, newH)
+        # The resized corner follows the cursor, keeping its fixed offset from
+        # the grab point so the panel tracks the mouse exactly as it moves.
+        cornerX = mouseX - self._resizeCornerOffset[0]
+        cornerZ = mouseZ - self._resizeCornerOffset[1]
+        newW = max(0.20, cornerX - topleftX)
+        newH = max(0.16, topleftZ - cornerZ)
         if abs(newW - self._width) < 0.0005 and abs(newH - self._height) < 0.0005:
             return Task.cont
 
@@ -742,11 +836,13 @@ class ArchipelagoOnscreenLog(DirectFrame):
         top = self._height / 2
         bottom = -self._height / 2
         halfWidth = self._width / 2
-        sendWidth = 0.115
-        gripSlotWidth = 0.070
+        sendWidth = self.SEND_SIZE
+        gripSlotWidth = self.SEND_SIZE + 0.024
         inputLeft = -halfWidth + self.PANEL_PADDING
         inputRight = halfWidth - self.PANEL_PADDING - gripSlotWidth - sendWidth - 0.012
-        viewTop = top - self.HEADER_HEIGHT - 0.015
+        # The log sits flush against the bottom of the header so no gap shows
+        # between the top bar and the message history.
+        viewTop = top - self.HEADER_HEIGHT
 
         self.input["width"] = max(1, (inputRight - inputLeft - 0.040) / 0.040)
 
@@ -770,8 +866,9 @@ class ArchipelagoOnscreenLog(DirectFrame):
         self.input["frameSize"] = (0, max(0.1, inputRight - inputLeft - 0.03),
                                    -inputHeight / 2 + 0.012, inputHeight / 2 - 0.012)
         self.input.setPos(inputLeft + 0.015, 0, inputZ)
+        # Send is a square now, sized to the compact composer height.
         self.sendButton["frameSize"] = (-sendWidth / 2, sendWidth / 2,
-                                        -inputHeight / 2, inputHeight / 2)
+                                        -sendWidth / 2, sendWidth / 2)
         self.sendButton.setPos(halfWidth - self.PANEL_PADDING - gripSlotWidth - sendWidth / 2,
                                0, inputZ)
         self._resizeGripPos = (halfWidth - self.PANEL_PADDING - gripSlotWidth / 2,
@@ -847,8 +944,6 @@ class ArchipelagoOnscreenLog(DirectFrame):
         )
         self._panelSequence.start()
         self._scrollToBottom()
-        if self._soundsEnabled():
-            self._playSfx(self._sfxOpen, volume=0.65)
 
     def hideAllEntries(self):
         if self.isHidden():
@@ -1080,24 +1175,6 @@ class ArchipelagoOnscreenLog(DirectFrame):
             return bool(base.settings.get("archipelago-chat-animations", True))
         except Exception:
             return True
-
-    def _soundsEnabled(self):
-        try:
-            return bool(base.settings.get("archipelago-chat-sounds", True))
-        except Exception:
-            return True
-
-    def _playSfx(self, sfx, volume=1.0):
-        if not sfx:
-            return
-        try:
-            sfx.setVolume(volume)
-            sfx.play()
-        except Exception:
-            pass
-
-    def _playChatInSound(self, volume=0.5):
-        self._playSfx(self._sfxChatIn, volume=volume)
 
     def _cleanupPanelSequence(self):
         if self._panelSequence:
@@ -1349,24 +1426,19 @@ class ArchipelagoOnscreenLog(DirectFrame):
         # Rows cover the message area, so they need their own wheel bindings
         # for the cursor to scroll the log while over any message.
         self._bindWheel(row)
+        timestampLabel = None
         if timestamps:
-            DirectLabel(
+            timestampLabel = DirectLabel(
                 parent=row,
                 relief=None,
                 text=timestamp,
                 text_align=TextNode.ALeft,
                 text_scale=max(0.028, textScale * 0.78),
-                text_fg=(0.55, 0.64, 0.73, 1),
+                text_fg=Vec4(self._chatTextColor[0] * 0.62, self._chatTextColor[1] * 0.68,
+                             self._chatTextColor[2] * 0.76, 1),
                 pos=(left + 0.012, 0, -textScale - 0.008),
             )
-        channelColors = {
-            "AP": self._accent,
-            "TOON": (0.16, 0.72, 0.88, 1),
-            "YOU": (0.95, 0.72, 0.18, 1),
-            "CLIENT": (0.55, 0.38, 0.92, 1),
-            "ERROR": (0.92, 0.23, 0.28, 1),
-        }
-        channelColor = channelColors.get(channel, self._accent)
+        channelColor = self._channelColors.get(channel, self._accent)
         channelLabel = DirectLabel(
             parent=row,
             relief=DGG.FLAT,
@@ -1386,10 +1458,11 @@ class ArchipelagoOnscreenLog(DirectFrame):
             text_scale=textScale,
             text_wordwrap=wordwrap,
             text_fg=(self._withAlpha(self._accent, 0.85)
-                     if isMention else (0.96, 0.97, 1, 1)),
+                     if isMention else self._chatTextColor),
             text_shadow=(0, 0, 0, 0.55),
             pos=(left + timestampWidth + channelWidth + 0.012, 0, -textScale - 0.008),
         )
+        self._applyFontTo(timestampLabel if timestamps else None, channelLabel, messageLabel)
         self._bindMessageSelection(row, message, row, channelLabel, messageLabel)
         self._messageRows.append(row)
         self._nextMessageZ -= rowHeight + 0.008
@@ -1422,9 +1495,15 @@ class ArchipelagoOnscreenLog(DirectFrame):
         else:
             contentTop = viewHeight
             contentBottom = 0.0
+        # Keep the canvas slightly narrower than the log frame so the
+        # horizontal scroll bar never qualifies to show.  Without this it
+        # appears whenever the vertical bar does (i.e. whenever the log
+        # overflows), rendering as a light-gray bar between the log and the
+        # composer.
+        guard = self.SCROLLBAR_GUARD / 2
         self.messageFrame["canvasSize"] = (
-            -halfWidth + self.PANEL_PADDING,
-            halfWidth - self.PANEL_PADDING,
+            -halfWidth + self.PANEL_PADDING + guard,
+            halfWidth - self.PANEL_PADDING - guard,
             contentBottom,
             contentTop,
         )
@@ -1566,3 +1645,30 @@ class ArchipelagoOnscreenLog(DirectFrame):
     @staticmethod
     def _withAlpha(color, alpha):
         return Vec4(color[0], color[1], color[2], alpha)
+
+    def _resolveChannelColor(self, key, default):
+        """Return the per-channel colour for ``key`` from settings.
+
+        A value of 'Auto' follows the panel accent, otherwise the saved hex
+        colour is parsed directly.
+        """
+        value = base.settings.get("archipelago-chat-channel-%s" % key)
+        if is_auto_color(value):
+            return Vec4(self._accent)
+        return parse_hex_color(value, default)
+
+    def _applyFontTo(self, *widgets):
+        """Set the configured chat font on DirectGui widgets.
+
+        Skips ``None`` widgets and leaves widgets alone when no custom font is
+        configured, so the game's own font is used by default.
+        """
+        if self._chatFont is None:
+            return
+        for widget in widgets:
+            if widget is None:
+                continue
+            try:
+                widget["text_font"] = self._chatFont
+            except Exception:
+                pass

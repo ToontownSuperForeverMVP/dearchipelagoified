@@ -36,6 +36,16 @@ PROCEDURAL SKY
   • Toggle: want-procedural-sky (default True).  Falls back to model sky if
     shaders unavailable.
 
+CONFIG.PRC CONTROL
+  Every toggle/tuning knob is Config.prc-driven (see LightingConfig.py): an
+  explicit value written in a .prc file is authoritative and overrides the
+  in-game options menu; unset keys fall through to base.settings and then to
+  the code defaults.  Zone/hood → profile hooks can also be declared in prc
+  (lighting-zone-profile-map / lighting-hood-profile-map, repeatable) or at
+  runtime via registerHoodProfile()/registerZoneProfile().  The module only
+  depends on Panda3D + direct, so it can be copied into other Toontown
+  sources alongside ProceduralSky/SkyUtil/LightingConfig and the shaders dir.
+
 SHADOW SYSTEM
   • Full-zone coverage: shadow film size computed from actual scene geometry.
   • Compact 3x3 Gaussian PCF keeps shadows sharp and temporally stable without
@@ -77,8 +87,7 @@ from panda3d.core import (
     CollisionRay,
     CollisionTraverser,
     CullFaceAttrib,
-    ConfigVariableBool,
-    ConfigVariableDouble,
+    ConfigVariableList,
     ConfigVariableString,
     DepthOffsetAttrib,
     DirectionalLight,
@@ -102,6 +111,7 @@ from panda3d.core import (
     Material,
     NodePath,
     OrthographicLens,
+    PerspectiveLens,
     PTA_LVecBase4f,
     PTA_LVecBase2f,
     LVecBase4f,
@@ -130,6 +140,8 @@ try:
     from otp.avatar import ShadowCaster as _OTPDropshadow
 except Exception:
     _OTPDropshadow = None
+
+from toontown.hood import LightingConfig
 
 from direct.showbase.ShowBaseGlobal import globalClock
 from direct.task.TaskManagerGlobal import taskMgr
@@ -167,6 +179,13 @@ def _syncBase() -> None:
     """
     global base
     try:
+        # Keep the PRC/settings resolver (LightingConfig) pointed at the same
+        # live `base` instance so explicit Config.prc values stay authoritative
+        # but the in-game options menu still feeds knobs the prc leaves unset.
+        LightingConfig.sync()
+    except Exception:
+        pass
+    try:
         if base is not None and getattr(base, 'render', None) is not None:
             return
     except Exception:
@@ -189,43 +208,23 @@ def _syncBase() -> None:
 
 
 def _getSettingValue(key: str, default):
-    """Fetch a setting from either Settings.getSetting(key, default) or Settings.get(key).
-    Falls back to Panda3D ConfigVariable if base.settings is missing or does not have the key.
+    """Resolve a knob: explicit Config.prc value → game settings → default.
+
+    Delegates to LightingConfig (the shared, game-agnostic resolver used by
+    both OutdoorLighting and ProceduralSky), so anything written in a .prc file
+    wins over the in-game options menu.  See LightingConfig for details.
     """
-    _syncBase()
-    settings = getattr(base, 'settings', None)
-    if settings is not None:
-        getter = getattr(settings, 'getSetting', None) or getattr(settings, 'get', None)
-        if getter is not None:
-            try:
-                # Try getting the setting directly first
-                v = getter(key)
-                if v is not None:
-                    return v
-            except TypeError:
-                try:
-                    v = getter(key, default)
-                    if v is not None:
-                        return v
-                except Exception:
-                    pass
-            except Exception:
-                pass
-    
-    # Fallback to Panda3D ConfigVariable
-    if isinstance(default, bool):
-        return ConfigVariableBool(key, default).value
-    elif isinstance(default, (int, float)):
-        return ConfigVariableDouble(key, float(default)).value
-    else:
-        return ConfigVariableString(key, str(default)).value
+    try:
+        return LightingConfig.value(key, default)
+    except Exception:
+        return default
 
 
 def _debugEnabled() -> bool:
     try:
-        return _coerceBool(_getSettingValue('lighting-debug', False), False)
+        return LightingConfig.boolVal('lighting-debug', False)
     except Exception:
-        return bool(ConfigVariableBool('lighting-debug', False).value)
+        return False
 
 
 def _dbg(msg: str) -> None:
@@ -385,7 +384,7 @@ def _spawnShadowTestScene() -> None:
     # should never appear in normal gameplay even if lighting-debug is enabled.
     # Enable explicitly via PRC or settings.
     try:
-        if not ConfigVariableBool('lighting-shadow-test-scene', False).value:
+        if not LightingConfig.boolVal('lighting-shadow-test-scene', False):
             return
     except Exception:
         return
@@ -831,9 +830,9 @@ _ZONE_PROFILES: dict[str, dict] = {
 
     'tt': {
         'ambient':          (0.28, 0.34, 0.48, 1.0),
-        'key':              (1.55, 1.40, 1.10, 1.0),
+        'key':              (1.62, 1.44, 1.10, 1.0),
         'keyHpr':           (135, -42, 0),
-        'fill':             (0.32, 0.42, 0.62, 1.0),
+        'fill':             (0.34, 0.44, 0.64, 1.0),
         'fillHpr':          (-45, -18, 0),
         'rim':              (0.18, 0.24, 0.40, 1.0),
         'rimHpr':           (315, -30, 0),
@@ -844,38 +843,38 @@ _ZONE_PROFILES: dict[str, dict] = {
         'shadowResScale':   1.00,
         'shadowAreaScale':  0.90,
         'shadowDarknessFloor': 0.24,
-        'fogColor':         (0.68, 0.80, 0.96, 1.0),
-        'fogNear':          110.0,
-        'fogFar':           580.0,
+        'fogColor':         (0.74, 0.84, 0.98, 1.0),
+        'fogNear':          105.0,
+        'fogFar':           620.0,
         'fogExponent':      None,
-        'skyScale':         (1.04, 1.01, 0.91, 1.0),
-        'clearColor':       (0.48, 0.70, 0.96, 1.0),
-        'skyZenithColor':   (0.10, 0.48, 1.05),
+        'skyScale':         (1.06, 1.02, 0.88, 1.0),
+        'clearColor':       (0.52, 0.74, 0.97, 1.0),
+        'skyZenithColor':   (0.08, 0.50, 1.08),
         'sunUV':            (0.65, 0.78),
-        'rayColor':         (1.00, 0.94, 0.70, 1.0),
-        'rayIntensity':     0.55,
-        'bloomIntensity':   0.28,
+        'rayColor':         (1.00, 0.92, 0.66, 1.0),
+        'rayIntensity':     0.58,
+        'bloomIntensity':   0.32,
         'bloomThreshold':   0.70,
         'exposure':         1.00,
         'hasWater':         True,
-        'waterColor':       (0.28, 0.52, 0.72, 0.88),
+        'waterColor':       (0.26, 0.54, 0.74, 0.90),
         'waterReflQuality': 'medium',
         'dayNightEnabled':  True,
-        'cloudCoverage':    0.52,
-        'cloudSpeed':       0.60,
-        'cloudSharpness':   0.65,
-        'turbidity':        2.2,
+        'cloudCoverage':    0.50,
+        'cloudSpeed':       0.62,
+        'cloudSharpness':   0.68,
+        'turbidity':        2.0,
         'starBrightness':   0.0,
         'moonEnabled':      False,
     },
 
     'tt_street': {
         'ambient':          (0.26, 0.32, 0.46, 1.0),
-        'key':              (1.48, 1.34, 1.05, 1.0),
+        'key':              (1.53, 1.36, 1.04, 1.0),
         'keyHpr':           (140, -40, 0),
-        'fill':             (0.30, 0.40, 0.58, 1.0),
+        'fill':             (0.31, 0.41, 0.60, 1.0),
         'fillHpr':          (-50, -20, 0),
-        'rim':              (0.15, 0.22, 0.38, 1.0),
+        'rim':              (0.16, 0.23, 0.39, 1.0),
         'rimHpr':           (310, -28, 0),
         'shadowCaster':     True,
         'shadowRes':        2048,
@@ -884,9 +883,9 @@ _ZONE_PROFILES: dict[str, dict] = {
         'shadowResScale':   1.00,
         'shadowAreaScale':  1.10,
         'shadowDarknessFloor': 0.22,
-        'fogColor':         (0.66, 0.78, 0.94, 1.0),
-        'fogNear':          95.0,
-        'fogFar':           500.0,
+        'fogColor':         (0.70, 0.81, 0.95, 1.0),
+        'fogNear':          90.0,
+        'fogFar':           520.0,
         'fogExponent':      None,
         'skyScale':         (1.04, 1.01, 0.91, 1.0),
         'clearColor':       (0.46, 0.68, 0.94, 1.0),
@@ -982,12 +981,12 @@ _ZONE_PROFILES: dict[str, dict] = {
     },
 
     'dg': {
-        'ambient':          (0.26, 0.38, 0.52, 1.0),
-        'key':              (1.52, 1.45, 1.15, 1.0),
+        'ambient':          (0.28, 0.40, 0.54, 1.0),
+        'key':              (1.60, 1.50, 1.14, 1.0),
         'keyHpr':           (170, -68, 0),
-        'fill':             (0.34, 0.46, 0.68, 1.0),
+        'fill':             (0.36, 0.48, 0.70, 1.0),
         'fillHpr':          (-10, -22, 0),
-        'rim':              (0.18, 0.28, 0.48, 1.0),
+        'rim':              (0.18, 0.30, 0.50, 1.0),
         'rimHpr':           (0,    55,  0),
         'shadowCaster':     True,
         'shadowRes':        2048,
@@ -996,38 +995,38 @@ _ZONE_PROFILES: dict[str, dict] = {
         'shadowResScale':   1.00,
         'shadowAreaScale':  0.95,
         'shadowDarknessFloor': 0.24,
-        'fogColor':         (0.64, 0.82, 1.00, 1.0),
-        'fogNear':          145.0,
-        'fogFar':           660.0,
+        'fogColor':         (0.60, 0.82, 1.02, 1.0),
+        'fogNear':          130.0,
+        'fogFar':           700.0,
         'fogExponent':      None,
-        'skyScale':         (0.92, 0.98, 1.12, 1.0),
-        'clearColor':       (0.42, 0.72, 1.00, 1.0),
-        'skyZenithColor':   (0.05, 0.55, 1.15),
+        'skyScale':         (0.90, 0.98, 1.16, 1.0),
+        'clearColor':       (0.40, 0.74, 1.02, 1.0),
+        'skyZenithColor':   (0.03, 0.58, 1.18),
         'sunUV':            (0.54, 0.90),
-        'rayColor':         (1.00, 1.00, 0.85, 1.0),
-        'rayIntensity':     0.72,
-        'bloomIntensity':   0.45,
+        'rayColor':         (1.00, 1.00, 0.82, 1.0),
+        'rayIntensity':     0.78,
+        'bloomIntensity':   0.32,
         'bloomThreshold':   0.55,
         'exposure':         1.05,
         'hasWater':         True,
-        'waterColor':       (0.24, 0.54, 0.36, 0.84),
+        'waterColor':       (0.22, 0.56, 0.34, 0.86),
         'waterReflQuality': 'medium',
         'dayNightEnabled':  True,
-        'cloudCoverage':    0.32,
+        'cloudCoverage':    0.30,
         'cloudSpeed':       0.50,
-        'cloudSharpness':   0.72,
-        'turbidity':        1.6,
+        'cloudSharpness':   0.76,
+        'turbidity':        1.4,
         'starBrightness':   0.0,
         'moonEnabled':      False,
     },
 
     'dg_street': {
-        'ambient':          (0.24, 0.34, 0.48, 1.0),
-        'key':              (1.45, 1.35, 1.08, 1.0),
+        'ambient':          (0.26, 0.36, 0.50, 1.0),
+        'key':              (1.52, 1.42, 1.06, 1.0),
         'keyHpr':           (172, -66, 0),
-        'fill':             (0.30, 0.42, 0.62, 1.0),
+        'fill':             (0.32, 0.44, 0.64, 1.0),
         'fillHpr':          (-12, -20, 0),
-        'rim':              (0.15, 0.24, 0.42, 1.0),
+        'rim':              (0.16, 0.26, 0.44, 1.0),
         'rimHpr':           (0,    52,  0),
         'shadowCaster':     True,
         'shadowRes':        2048,
@@ -1060,12 +1059,12 @@ _ZONE_PROFILES: dict[str, dict] = {
     },
 
     'mm': {
-        'ambient':          (0.38, 0.24, 0.34, 1.0),
-        'key':              (1.35, 0.75, 0.35, 1.0),
+        'ambient':          (0.42, 0.26, 0.36, 1.0),
+        'key':              (1.42, 0.78, 0.34, 1.0),
         'keyHpr':           (260, -18, 0),
-        'fill':             (0.24, 0.18, 0.44, 1.0),
+        'fill':             (0.26, 0.19, 0.48, 1.0),
         'fillHpr':          (80,  -28, 0),
-        'rim':              (0.85, 0.42, 0.18, 1.0),
+        'rim':              (0.90, 0.44, 0.16, 1.0),
         'rimHpr':           (258, -10,  0),
         'shadowCaster':     True,
         'shadowRes':        2048,
@@ -1074,36 +1073,36 @@ _ZONE_PROFILES: dict[str, dict] = {
         'shadowResScale':   1.00,
         'shadowAreaScale':  1.10,
         'shadowDarknessFloor': 0.22,
-        'fogColor':         (0.82, 0.46, 0.22, 1.0),
-        'fogNear':          15.0,
-        'fogFar':           380.0,
+        'fogColor':         (0.86, 0.48, 0.22, 1.0),
+        'fogNear':          12.0,
+        'fogFar':           400.0,
         'fogExponent':      None,
-        'skyScale':         (1.24, 0.80, 0.58, 1.0),
-        'clearColor':       (0.85, 0.45, 0.20, 1.0),
-        'skyZenithColor':   (0.35, 0.22, 0.65),
+        'skyScale':         (1.28, 0.78, 0.56, 1.0),
+        'clearColor':       (0.88, 0.46, 0.18, 1.0),
+        'skyZenithColor':   (0.42, 0.20, 0.72),
         'sunUV':            (0.15, 0.48),
-        'rayColor':         (1.00, 0.65, 0.28, 1.0),
-        'rayIntensity':     0.65,
-        'bloomIntensity':   0.48,
+        'rayColor':         (1.00, 0.62, 0.24, 1.0),
+        'rayIntensity':     0.72,
+        'bloomIntensity':   0.32,
         'bloomThreshold':   0.58,
         'exposure':         1.02,
         'hasWater':         False,
         'dayNightEnabled':  True,
-        'cloudCoverage':    0.48,
-        'cloudSpeed':       0.75,
-        'cloudSharpness':   0.55,
-        'turbidity':        3.2,
+        'cloudCoverage':    0.46,
+        'cloudSpeed':       0.80,
+        'cloudSharpness':   0.60,
+        'turbidity':        2.8,
         'starBrightness':   0.0,
         'moonEnabled':      False,
     },
 
     'mm_street': {
-        'ambient':          (0.36, 0.22, 0.32, 1.0),
-        'key':              (1.30, 0.70, 0.32, 1.0),
+        'ambient':          (0.40, 0.24, 0.34, 1.0),
+        'key':              (1.36, 0.72, 0.30, 1.0),
         'keyHpr':           (258, -16, 0),
-        'fill':             (0.22, 0.16, 0.42, 1.0),
+        'fill':             (0.24, 0.17, 0.45, 1.0),
         'fillHpr':          (78,  -26, 0),
-        'rim':              (0.80, 0.40, 0.16, 1.0),
+        'rim':              (0.85, 0.42, 0.14, 1.0),
         'rimHpr':           (256, -8,  0),
         'shadowCaster':     True,
         'shadowRes':        2048,
@@ -1112,184 +1111,184 @@ _ZONE_PROFILES: dict[str, dict] = {
         'shadowResScale':   1.00,
         'shadowAreaScale':  1.05,
         'shadowDarknessFloor': 0.20,
-        'fogColor':         (0.80, 0.44, 0.20, 1.0),
-        'fogNear':          12.0,
-        'fogFar':           320.0,
+        'fogColor':         (0.84, 0.46, 0.20, 1.0),
+        'fogNear':          10.0,
+        'fogFar':           330.0,
         'fogExponent':      None,
-        'skyScale':         (1.24, 0.80, 0.58, 1.0),
-        'clearColor':       (0.82, 0.42, 0.18, 1.0),
-        'skyZenithColor':   (0.32, 0.20, 0.62),
+        'skyScale':         (1.28, 0.78, 0.56, 1.0),
+        'clearColor':       (0.86, 0.43, 0.17, 1.0),
+        'skyZenithColor':   (0.40, 0.18, 0.70),
         'sunUV':            (0.15, 0.46),
-        'rayColor':         (1.00, 0.62, 0.25, 1.0),
-        'rayIntensity':     0.58,
-        'bloomIntensity':   0.44,
+        'rayColor':         (1.00, 0.60, 0.22, 1.0),
+        'rayIntensity':     0.64,
+        'bloomIntensity':   0.32,
         'bloomThreshold':   0.60,
         'exposure':         1.02,
         'hasWater':         False,
         'dayNightEnabled':  True,
-        'cloudCoverage':    0.46,
-        'cloudSpeed':       0.78,
-        'cloudSharpness':   0.52,
-        'turbidity':        3.2,
+        'cloudCoverage':    0.44,
+        'cloudSpeed':       0.80,
+        'cloudSharpness':   0.58,
+        'turbidity':        2.8,
         'starBrightness':   0.0,
         'moonEnabled':      False,
     },
 
     'br': {
-        'ambient':          (0.46, 0.54, 0.72, 1.0),
-        'key':              (0.75, 0.85, 1.05, 1.0),
+        'ambient':          (0.49, 0.57, 0.75, 1.0),
+        'key':              (0.80, 0.90, 1.12, 1.0),
         'keyHpr':           (180, -22, 0),
-        'fill':             (0.38, 0.46, 0.62, 1.0),
+        'fill':             (0.40, 0.48, 0.66, 1.0),
         'fillHpr':          (0,   -12, 0),
-        'rim':              (0.48, 0.56, 0.74, 1.0),
+        'rim':              (0.50, 0.58, 0.78, 1.0),
         'rimHpr':           (178, -6,   0),
         'shadowCaster':     False,
         'shadowRes':        512,
         'shadowArea':       580,
         'shadowFollowDist': 460.0,
         'shadowDarknessFloor': 0.26,
-        'fogColor':         (0.72, 0.82, 0.96, 1.0),
+        'fogColor':         (0.76, 0.86, 0.99, 1.0),
         'fogNear':          0.0,
         'fogFar':           None,
-        'fogExponent':      0.012,
-        'skyScale':         (0.84, 0.92, 1.10, 1.0),
-        'clearColor':       (0.68, 0.80, 0.96, 1.0),
-        'skyZenithColor':   (0.24, 0.52, 0.95),
+        'fogExponent':      0.014,
+        'skyScale':         (0.86, 0.94, 1.12, 1.0),
+        'clearColor':       (0.72, 0.84, 0.99, 1.0),
+        'skyZenithColor':   (0.22, 0.56, 1.00),
         'sunUV':            (0.50, 0.44),
-        'rayColor':         (0.88, 0.94, 1.00, 1.0),
-        'rayIntensity':     0.10,
-        'bloomIntensity':   0.20,
+        'rayColor':         (0.90, 0.96, 1.02, 1.0),
+        'rayIntensity':     0.14,
+        'bloomIntensity':   0.22,
         'bloomThreshold':   0.70,
         'exposure':         0.94,
         'hasWater':         False,
         'dayNightEnabled':  True,
-        'cloudCoverage':    0.75,
-        'cloudSpeed':       1.20,
-        'cloudSharpness':   0.20,
-        'turbidity':        5.5,
+        'cloudCoverage':    0.78,
+        'cloudSpeed':       1.25,
+        'cloudSharpness':   0.18,
+        'turbidity':        5.8,
         'starBrightness':   0.0,
         'moonEnabled':      False,
         'auroraEnabled':    True,
     },
 
     'br_street': {
-        'ambient':          (0.44, 0.52, 0.70, 1.0),
-        'key':              (0.72, 0.82, 1.02, 1.0),
+        'ambient':          (0.47, 0.55, 0.73, 1.0),
+        'key':              (0.78, 0.88, 1.10, 1.0),
         'keyHpr':           (180, -20, 0),
-        'fill':             (0.36, 0.44, 0.60, 1.0),
+        'fill':             (0.38, 0.46, 0.63, 1.0),
         'fillHpr':          (0,   -10, 0),
-        'rim':              (0.46, 0.54, 0.72, 1.0),
+        'rim':              (0.48, 0.56, 0.76, 1.0),
         'rimHpr':           (178, -4,   0),
         'shadowCaster':     False,
         'shadowRes':        512,
         'shadowArea':       500,
         'shadowFollowDist': 420.0,
         'shadowDarknessFloor': 0.24,
-        'fogColor':         (0.70, 0.80, 0.94, 1.0),
+        'fogColor':         (0.74, 0.84, 0.97, 1.0),
         'fogNear':          0.0,
         'fogFar':           None,
-        'fogExponent':      0.014,
-        'skyScale':         (0.84, 0.92, 1.10, 1.0),
-        'clearColor':       (0.66, 0.78, 0.94, 1.0),
-        'skyZenithColor':   (0.22, 0.50, 0.92),
+        'fogExponent':      0.016,
+        'skyScale':         (0.86, 0.94, 1.12, 1.0),
+        'clearColor':       (0.70, 0.82, 0.97, 1.0),
+        'skyZenithColor':   (0.20, 0.54, 0.98),
         'sunUV':            (0.50, 0.42),
-        'rayColor':         (0.86, 0.92, 1.00, 1.0),
-        'rayIntensity':     0.08,
-        'bloomIntensity':   0.18,
+        'rayColor':         (0.88, 0.94, 1.02, 1.0),
+        'rayIntensity':     0.12,
+        'bloomIntensity':   0.20,
         'bloomThreshold':   0.72,
         'exposure':         0.92,
         'hasWater':         False,
         'dayNightEnabled':  True,
-        'cloudCoverage':    0.78,
-        'cloudSpeed':       1.25,
-        'cloudSharpness':   0.18,
-        'turbidity':        5.6,
+        'cloudCoverage':    0.80,
+        'cloudSpeed':       1.28,
+        'cloudSharpness':   0.16,
+        'turbidity':        5.9,
         'starBrightness':   0.0,
         'moonEnabled':      False,
         'auroraEnabled':    True,
     },
 
     'dl': {
-        'ambient':          (0.18, 0.16, 0.32, 1.0),
-        'key':              (0.45, 0.52, 0.85, 1.0),
+        'ambient':          (0.18, 0.16, 0.34, 1.0),
+        'key':              (0.48, 0.54, 0.90, 1.0),
         'keyHpr':           (225, -55, 0),
-        'fill':             (0.06, 0.08, 0.18, 1.0),
+        'fill':             (0.06, 0.08, 0.20, 1.0),
         'fillHpr':          (45,  -15, 0),
-        'rim':              (0.30, 0.38, 0.65, 1.0),
+        'rim':              (0.32, 0.42, 0.72, 1.0),
         'rimHpr':           (220, -50, 0),
         'shadowCaster':     False,
         'shadowRes':        1024,
         'shadowArea':       550,
         'shadowFollowDist': 450.0,
         'shadowDarknessFloor': 0.12,
-        'fogColor':         (0.05, 0.07, 0.14, 1.0),
+        'fogColor':         (0.045, 0.065, 0.150, 1.0),
         'fogNear':          0.0,
         'fogFar':           None,
         'fogExponent':      0.005,
-        'skyScale':         (0.45, 0.50, 0.80, 1.0),
-        'clearColor':       (0.03, 0.04, 0.10, 1.0),
-        'skyZenithColor':   (0.02, 0.04, 0.12),
+        'skyScale':         (0.46, 0.52, 0.84, 1.0),
+        'clearColor':       (0.026, 0.038, 0.110, 1.0),
+        'skyZenithColor':   (0.02, 0.04, 0.13),
         'sunUV':            (0.30, 0.82),
-        'rayColor':         (0.58, 0.70, 1.00, 1.0),
+        'rayColor':         (0.60, 0.72, 1.02, 1.0),
         'rayIntensity':     0.0,
-        'bloomIntensity':   0.28,
+        'bloomIntensity':   0.30,
         'bloomThreshold':   0.65,
         'exposure':         1.05,
         'hasWater':         False,
         'dayNightEnabled':  False,
-        'cloudCoverage':    0.18,
-        'cloudSpeed':       0.20,
-        'cloudSharpness':   0.50,
-        'turbidity':        1.5,
-        'starBrightness':   0.95,
+        'cloudCoverage':    0.16,
+        'cloudSpeed':       0.18,
+        'cloudSharpness':   0.54,
+        'turbidity':        1.3,
+        'starBrightness':   0.97,
         'moonEnabled':      True,
         'moonDir':          (225, -55, 0),
         'auroraEnabled':    True,
     },
 
     'dl_street': {
-        'ambient':          (0.16, 0.14, 0.30, 1.0),
-        'key':              (0.42, 0.48, 0.80, 1.0),
+        'ambient':          (0.16, 0.14, 0.32, 1.0),
+        'key':              (0.45, 0.51, 0.87, 1.0),
         'keyHpr':           (225, -52, 0),
-        'fill':             (0.05, 0.07, 0.16, 1.0),
+        'fill':             (0.05, 0.07, 0.18, 1.0),
         'fillHpr':          (42,  -14, 0),
-        'rim':              (0.28, 0.35, 0.60, 1.0),
+        'rim':              (0.30, 0.40, 0.68, 1.0),
         'rimHpr':           (222, -48, 0),
         'shadowCaster':     False,
         'shadowRes':        1024,
         'shadowArea':       500,
         'shadowFollowDist': 420.0,
         'shadowDarknessFloor': 0.12,
-        'fogColor':         (0.05, 0.06, 0.12, 1.0),
+        'fogColor':         (0.045, 0.058, 0.135, 1.0),
         'fogNear':          0.0,
         'fogFar':           None,
         'fogExponent':      0.005,
-        'skyScale':         (0.45, 0.50, 0.80, 1.0),
-        'clearColor':       (0.03, 0.04, 0.10, 1.0),
-        'skyZenithColor':   (0.02, 0.04, 0.12),
+        'skyScale':         (0.46, 0.52, 0.84, 1.0),
+        'clearColor':       (0.026, 0.036, 0.105, 1.0),
+        'skyZenithColor':   (0.02, 0.04, 0.13),
         'sunUV':            (0.30, 0.80),
-        'rayColor':         (0.56, 0.68, 1.00, 1.0),
+        'rayColor':         (0.58, 0.71, 1.02, 1.0),
         'rayIntensity':     0.00,
-        'bloomIntensity':   0.26,
+        'bloomIntensity':   0.28,
         'bloomThreshold':   0.68,
         'exposure':         1.05,
         'hasWater':         False,
         'dayNightEnabled':  False,
-        'cloudCoverage':    0.18,
-        'cloudSpeed':       0.18,
-        'cloudSharpness':   0.50,
-        'turbidity':        1.5,
-        'starBrightness':   0.95,
+        'cloudCoverage':    0.17,
+        'cloudSpeed':       0.17,
+        'cloudSharpness':   0.54,
+        'turbidity':        1.3,
+        'starBrightness':   0.97,
         'moonEnabled':      True,
         'moonDir':          (225, -55, 0),
         'auroraEnabled':    True,
     },
 
     'gs': {
-        'ambient':          (0.30, 0.32, 0.40, 1.0),
-        'key':              (1.10, 1.00, 0.82, 1.0),
+        'ambient':          (0.32, 0.34, 0.42, 1.0),
+        'key':              (1.17, 1.05, 0.84, 1.0),
         'keyHpr':           (130, -48, 0),
-        'fill':             (0.24, 0.28, 0.40, 1.0),
+        'fill':             (0.26, 0.30, 0.42, 1.0),
         'fillHpr':          (-50, -30, 0),
         'rim':              None,
         'shadowCaster':     True,
@@ -2520,14 +2519,22 @@ _DAY_NIGHT_KEYFRAMES: dict[str, list[tuple]] = {
                 'fogExponent': 0.016, 'clearColor': (0.12,0.18,0.32,1),
                 'skyScale': (0.60,0.72,0.94,1), 'bloomIntensity': 0.12,
                 'auroraEnabled': True, 'starBrightness': 0.85, 'moonEnabled': True, 'moonDir': (180,-50,0)}),
-        (12.0, {'ambient': (0.46,0.54,0.72,1), 'key': (0.75,0.85,1.05,1),
-                'keyHpr': (180,-22,0), 'fogColor': (0.72,0.82,0.96,1),
-                'fogExponent': 0.012, 'clearColor': (0.68,0.80,0.96,1),
-                'skyScale': (0.84,0.92,1.10,1), 'bloomIntensity': 0.20}),
-        (18.0, {'ambient': (0.28,0.34,0.48,1), 'key': (0.40,0.46,0.65,1),
-                'keyHpr': (270,-12,0), 'fogColor': (0.35,0.42,0.60,1),
-                'fogExponent': 0.014, 'clearColor': (0.30,0.38,0.56,1),
-                'skyScale': (0.68,0.80,1.02,1), 'bloomIntensity': 0.16,
+        (12.0, {'ambient': (0.49,0.57,0.75,1), 'key': (0.80,0.90,1.12,1),
+                'keyHpr': (180,-22,0),
+                'fill': (0.40,0.48,0.66,1), 'fillHpr': (0,-12,0),
+                'rim': (0.50,0.58,0.78,1), 'rimHpr': (178,-6,0),
+                'rayColor': (0.90,0.96,1.02,1), 'rayIntensity': 0.14,
+                'fogColor': (0.76,0.86,0.99,1),
+                'fogExponent': 0.014, 'clearColor': (0.72,0.84,0.99,1),
+                'skyScale': (0.86,0.94,1.12,1), 'bloomIntensity': 0.22}),
+        (18.0, {'ambient': (0.30,0.37,0.52,1), 'key': (0.42,0.48,0.70,1),
+                'keyHpr': (270,-12,0),
+                'fill': (0.26,0.30,0.44,1), 'fillHpr': (270,-8,0),
+                'rim': (0.40,0.44,0.62,1), 'rimHpr': (0,4,0),
+                'rayColor': (0.80,0.88,1.00,1), 'rayIntensity': 0.08,
+                'fogColor': (0.38,0.46,0.66,1),
+                'fogExponent': 0.016, 'clearColor': (0.32,0.42,0.62,1),
+                'skyScale': (0.70,0.84,1.06,1), 'bloomIntensity': 0.18,
                 'auroraEnabled': True, 'starBrightness': 0.40}),
         (24.0, None),
     ],
@@ -2554,15 +2561,23 @@ _DAY_NIGHT_KEYFRAMES: dict[str, list[tuple]] = {
                 'fogNear': 50.0, 'fogFar': 320.0, 'clearColor': (0.62,0.50,0.34,1),
                 'bloomIntensity': 0.36, 'shadowCaster': True,
                 'starBrightness': 0.0, 'moonEnabled': False}),
-        (11.0, {'ambient': (0.30,0.32,0.40,1), 'key': (1.20,1.10,0.88,1),
-                'keyHpr': (130,-48,0), 'fogColor': (0.76,0.78,0.72,1),
-                'fogNear': 60.0, 'fogFar': 420.0, 'clearColor': (0.52,0.68,0.88,1),
-                'bloomIntensity': 0.25, 'shadowCaster': True,
+        (11.0, {'ambient': (0.32,0.34,0.42,1), 'key': (1.26,1.14,0.90,1),
+                'keyHpr': (130,-48,0),
+                'fill': (0.26,0.30,0.42,1), 'fillHpr': (-50,-30,0),
+                'rim': (0.18,0.22,0.34,1), 'rimHpr': (300,-28,0),
+                'rayColor': (1.00,0.92,0.62,1), 'rayIntensity': 0.50,
+                'fogColor': (0.80,0.80,0.72,1),
+                'fogNear': 55.0, 'fogFar': 440.0, 'clearColor': (0.48,0.70,0.92,1),
+                'bloomIntensity': 0.28, 'shadowCaster': True,
                 'starBrightness': 0.0, 'moonEnabled': False}),
-        (18.0, {'ambient': (0.28,0.22,0.18,1), 'key': (1.00,0.58,0.22,1),
-                'keyHpr': (240,-18,0), 'fogColor': (0.72,0.46,0.24,1),
-                'fogNear': 40.0, 'fogFar': 320.0, 'clearColor': (0.66,0.40,0.18,1),
-                'bloomIntensity': 0.44, 'shadowCaster': True,
+        (18.0, {'ambient': (0.30,0.24,0.18,1), 'key': (1.06,0.60,0.20,1),
+                'keyHpr': (240,-18,0),
+                'fill': (0.22,0.16,0.24,1), 'fillHpr': (240,-14,0),
+                'rim': (0.70,0.32,0.12,1), 'rimHpr': (238,-10,0),
+                'rayColor': (1.00,0.60,0.22,1), 'rayIntensity': 0.46,
+                'fogColor': (0.78,0.48,0.22,1),
+                'fogNear': 38.0, 'fogFar': 330.0, 'clearColor': (0.72,0.42,0.16,1),
+                'bloomIntensity': 0.32, 'shadowCaster': True,
                 'starBrightness': 0.0, 'moonEnabled': False}),
         (21.0, {'ambient': (0.08,0.10,0.18,1), 'key': (0.16,0.18,0.34,1),
                 'keyHpr': (225,-34,0), 'fogColor': (0.08,0.10,0.18,1),
@@ -2580,47 +2595,158 @@ _DAY_NIGHT_KEYFRAMES: dict[str, list[tuple]] = {
 _HOOD_ID_MAP: dict[int, str] | None = None
 _ZONE_ID_MAP: dict[int, str]  = {}   # populated lazily
 
+# Runtime / PRC profile overrides.
+#
+# Entries come from two places:
+#   * Config.prc – ``lighting-zone-profile-map 10100 tt_street`` (repeatable)
+#     and ``lighting-hood-profile-map <hoodId> <style>``.  These are
+#     authoritative over the built-in tables below.
+#   * registerZoneProfile() / registerHoodProfile() – a runtime hook for
+#     other Toontown sources / zone loaders that don't want to hard-code
+#     zone IDs or import this module's game constants.
+_ZONE_OVERRIDES: dict[int, str] = {}
+_HOOD_OVERRIDES: dict[int, str] = {}
+
+_LIGHTING_ZONE_MAP_PRC = ConfigVariableList(
+    'lighting-zone-profile-map',
+    'Extra "<zoneId> <style>" entries that override the built-in zone→profile table.',
+)
+_LIGHTING_HOOD_MAP_PRC = ConfigVariableList(
+    'lighting-hood-profile-map',
+    'Extra "<hoodId> <style>" entries that override the built-in hood→profile table.',
+)
+
+
+def _prcZoneProfileMap() -> dict[int, str]:
+    """Parse the lighting-zone-profile-map Config.prc list into {zoneId: style}."""
+    out: dict[int, str] = {}
+    try:
+        for i in range(_LIGHTING_ZONE_MAP_PRC.getNumValues()):
+            parts = str(_LIGHTING_ZONE_MAP_PRC.getStringValue(i)).split(None, 1)
+            if len(parts) == 2 and parts[0].lstrip('-').isdigit():
+                style = parts[1].strip()
+                if style in _ZONE_PROFILES:
+                    out[int(parts[0])] = style
+    except Exception:
+        pass
+    return out
+
+
+def _prcHoodProfileMap() -> dict[int, str]:
+    """Parse the lighting-hood-profile-map Config.prc list into {hoodId: style}."""
+    out: dict[int, str] = {}
+    try:
+        for i in range(_LIGHTING_HOOD_MAP_PRC.getNumValues()):
+            parts = str(_LIGHTING_HOOD_MAP_PRC.getStringValue(i)).split(None, 1)
+            if len(parts) == 2 and parts[0].lstrip('-').isdigit():
+                style = parts[1].strip()
+                if style in _ZONE_PROFILES:
+                    out[int(parts[0])] = style
+    except Exception:
+        pass
+    return out
+
+
+def registerHoodProfile(hoodId: int, style: str) -> bool:
+    """Runtime hook: pin a numeric hood ID to a lighting profile style.
+
+    This lets other Toontown sources map their own hood constants without
+    relying on the built-in ToontownGlobals table.  Returns False (and does
+    nothing) if *style* isn't a known profile key.
+    """
+    if not isinstance(style, str) or style not in _ZONE_PROFILES:
+        return False
+    _HOOD_OVERRIDES[int(hoodId)] = style
+    return True
+
+
+def registerZoneProfile(zoneId: int, style: str) -> bool:
+    """Runtime hook: pin a numeric zone/street ID to a lighting profile style.
+
+    Takes priority over the built-in zone table for that zone.  Returns False
+    (and does nothing) if *style* isn't a known profile key.
+    """
+    if not isinstance(style, str) or style not in _ZONE_PROFILES:
+        return False
+    _ZONE_OVERRIDES[int(zoneId)] = style
+    return True
+
+
+def clearProfileOverrides() -> None:
+    """Drop all runtime overrides added via registerHoodProfile/registerZoneProfile.
+
+    Config.prc entries are re-read on every resolve and are unaffected.
+    """
+    _HOOD_OVERRIDES.clear()
+    _ZONE_OVERRIDES.clear()
+
+
+def _toontownGlobals():
+    """Best-effort access to the source's ToontownGlobals constants module.
+
+    The lighting system works without it (profiles are keyed by style string);
+    the table is only used to map numeric hood/zone IDs this game already uses.
+    """
+    try:
+        from toontown.toonbase import ToontownGlobals as TG
+        return TG
+    except Exception:
+        return None
+
 
 def _buildHoodIdMap() -> dict[int, str]:
-    from toontown.toonbase import ToontownGlobals as TG
-    m = {
-        TG.ToontownCentral:   'tt',
-        TG.DonaldsDock:       'dd',
-        TG.MinniesMelodyland: 'mm',
-        TG.DaisyGardens:      'dg',
-        TG.TheBrrrgh:         'br',
-        TG.DonaldsDreamland:  'dl',
-        TG.GoofySpeedway:     'gs',
-        TG.OutdoorZone:       'oz',
-        TG.GolfZone:          'golf_course',
-        TG.PartyHood:         'party',
-        TG.BossbotHQ:         'bossbot_hq',
-        TG.SellbotHQ:         'sellbot_hq',
-        TG.CashbotHQ:         'cashbot_hq',
-        TG.LawbotHQ:          'lawbot_hq',
-        TG.Tutorial:          'tutorial',
-    }
+    """Map this source's ToontownGlobals hood constants → profile styles.
+
+    Missing constants are skipped, so a foreign Toontown source (with a
+    different subset of hoods) can import this module untouched.
+    """
+    TG = _toontownGlobals()
+
+    def _val(attr: str):
+        return getattr(TG, attr, None) if TG is not None else None
+
+    m: dict[int, str] = {}
+    for attr, style in (
+        ('ToontownCentral',   'tt'),
+        ('DonaldsDock',       'dd'),
+        ('MinniesMelodyland', 'mm'),
+        ('DaisyGardens',      'dg'),
+        ('TheBrrrgh',         'br'),
+        ('DonaldsDreamland',  'dl'),
+        ('GoofySpeedway',     'gs'),
+        ('OutdoorZone',       'oz'),
+        ('GolfZone',          'golf_course'),
+        ('PartyHood',         'party'),
+        ('BossbotHQ',         'bossbot_hq'),
+        ('SellbotHQ',         'sellbot_hq'),
+        ('CashbotHQ',         'cashbot_hq'),
+        ('LawbotHQ',          'lawbot_hq'),
+        ('Tutorial',          'tutorial'),
+    ):
+        v = _val(attr)
+        if v is not None:
+            m[v] = style
     for attr in ('MyEstate', 'Estate', 'ToonEstate'):
-        val = getattr(TG, attr, None)
-        if val is not None:
-            m[val] = 'estate'
+        v = _val(attr)
+        if v is not None:
+            m[v] = 'estate'
     for attr in ('FunnyFarm',):
-        val = getattr(TG, attr, None)
-        if val is not None:
-            m[val] = 'playground'
+        v = _val(attr)
+        if v is not None:
+            m[v] = 'playground'
     for attr in ('WelcomeValleyBegin',):
-        val = getattr(TG, attr, None)
-        if val is not None:
-            m[val] = 'tt'
+        v = _val(attr)
+        if v is not None:
+            m[v] = 'tt'
     return m
 
 
 def _buildZoneIdMap() -> dict[int, str]:
     """Map individual zone IDs to specific sub-profiles."""
-    from toontown.toonbase import ToontownGlobals as TG
+    TG = _toontownGlobals()
 
     def _zr(tg_attr: str) -> int | None:
-        return getattr(TG, tg_attr, None)
+        return getattr(TG, tg_attr, None) if TG is not None else None
 
     z: dict[int, str] = {}
 
@@ -2737,34 +2863,78 @@ def _buildZoneIdMap() -> dict[int, str]:
     return z
 
 
+def _zoneOverride(zoneId: int) -> str | None:
+    """Runtime-then-PRC override style for a zone ID (None if not overridden)."""
+    res = _ZONE_OVERRIDES.get(int(zoneId))
+    if res in _ZONE_PROFILES:
+        return res
+    res = _prcZoneProfileMap().get(int(zoneId))
+    if res in _ZONE_PROFILES:
+        return res
+    return None
+
+
+def _hoodOverride(hoodId: int) -> str | None:
+    """Runtime-then-PRC override style for a hood ID (None if not overridden)."""
+    res = _HOOD_OVERRIDES.get(int(hoodId))
+    if res in _ZONE_PROFILES:
+        return res
+    res = _prcHoodProfileMap().get(int(hoodId))
+    if res in _ZONE_PROFILES:
+        return res
+    return None
+
+
 def _resolveStyle(style: str, hoodId: int | None,
                   zoneId: int | None = None) -> str:
+    """Resolve the active lighting profile key.
+
+    Lookup priority:
+      1. runtime/PRC zone override for the exact zone ID
+      2. built-in zone table (lazily built from this source's ToontownGlobals)
+      3. runtime/PRC zone override for the canonical branch zone (zone - zone%100)
+      4. built-in branch-zone table
+      5. runtime/PRC hood override
+      6. built-in hood table
+      7. the caller-provided style ('playground' fallback if unknown)
+    """
     global _HOOD_ID_MAP, _ZONE_ID_MAP
 
     # Zone ID takes priority (most specific).
     if zoneId is not None:
+        zid = int(zoneId)
+        res = _zoneOverride(zid)
+        if res:
+            return res
         if not _ZONE_ID_MAP:
             try:
                 _ZONE_ID_MAP = _buildZoneIdMap()
             except Exception:
-                pass
-        res = _ZONE_ID_MAP.get(zoneId)
+                _ZONE_ID_MAP = {}
+        res = _ZONE_ID_MAP.get(zid)
         if res and res in _ZONE_PROFILES:
             return res
         # Fallback to the canonical branch zone (e.g. street segment zone 4101 -> branch 4100)
-        branchZone = zoneId - (zoneId % 100)
+        branchZone = zid - (zid % 100)
+        res = _zoneOverride(branchZone)
+        if res:
+            return res
         res = _ZONE_ID_MAP.get(branchZone)
         if res and res in _ZONE_PROFILES:
             return res
 
     # Hood ID next.
     if hoodId is not None:
+        hid = int(hoodId)
+        res = _hoodOverride(hid)
+        if res:
+            return res
         if _HOOD_ID_MAP is None:
             try:
                 _HOOD_ID_MAP = _buildHoodIdMap()
             except Exception:
                 _HOOD_ID_MAP = {}
-        res = _HOOD_ID_MAP.get(hoodId)
+        res = _HOOD_ID_MAP.get(hid)
         if res and res in _ZONE_PROFILES:
             return res
 
@@ -2868,6 +3038,33 @@ _lampLightsActive: bool        = False
 _activeLampSignature: tuple    = ()
 _lampRefreshAccum: float       = 0.0
 
+# Per-lamp point-light shadow buffers.  One small persistent depth buffer per
+# virtualized lamp slot (offset by the same index as osl_LampPosWorld{i}).  They
+# are allocated once per process (mirroring _lampLights, which also persists
+# across zones) so a fresh FBO never races a live one in the /Draw thread.  Each
+# entry: {'buf': GraphicsOutput, 'cam': NodePath, 'tex': Texture, 'res': int}
+_lampShadowRig: list[dict] = []
+_lampShadowInitPending       = False
+_lampShadowRes               = 256
+_lampShadowFov               = 110.0
+_lampShadowReach             = 26.0       # perspective far clip + texel scale (world units)
+_lampShadowMatrix: list[Any] = []         # LMatrix4 per lamp, composed in _updateWorldShadowShaderInputs
+_lampShadowWanted            = False
+_lampShadowCasterShader: Shader | None = None
+
+_LAMP_SHADOW_MATRIX_UNIFORMS = (
+    'osl_LampShadowMatrix0', 'osl_LampShadowMatrix1',
+    'osl_LampShadowMatrix2', 'osl_LampShadowMatrix3',
+)
+_LAMP_SHADOW_MAP_UNIFORMS = (
+    'osl_LampShadowMap0', 'osl_LampShadowMap1',
+    'osl_LampShadowMap2', 'osl_LampShadowMap3',
+)
+_LAMP_SHADOW_ON_UNIFORMS = (
+    'osl_LampShadowOn0', 'osl_LampShadowOn1',
+    'osl_LampShadowOn2', 'osl_LampShadowOn3',
+)
+
 # Lamp node name keywords – any node whose name contains one of these is treated as a light source
 _LAMP_KEYWORDS: tuple = (
     'lamp', 'lantern', 'streetlight', 'lightpole', 'lamp_post', 'lamppost',
@@ -2936,13 +3133,7 @@ def _wantFx() -> bool:
     _syncBase()
     if _OUTDOOR_SHADER_BISECT_LEVEL < 1:
         return False
-    try:
-        val = _getSettingValue('want-modern-outdoor-lighting', None)
-        if val is not None:
-            return _coerceBool(val, True)
-    except Exception:
-        pass
-    return ConfigVariableBool('want-modern-outdoor-lighting', True).value
+    return LightingConfig.boolVal('want-modern-outdoor-lighting', True)
 
 
 def _coerceBool(value, default: bool = False) -> bool:
@@ -2963,36 +3154,31 @@ def _coerceBool(value, default: bool = False) -> bool:
 
 
 def _settingsBool(key: str, default: bool) -> bool:
+    """PRC-first bool knob (see LightingConfig)."""
     try:
-        return _coerceBool(_getSettingValue(key, default), default)
+        return LightingConfig.boolVal(key, default)
     except Exception:
         return default
 
 
 def _settingsFloat(key: str, default: float) -> float:
+    """PRC-first float knob (see LightingConfig)."""
     try:
-        value = float(_getSettingValue(key, default))
-        return value if math.isfinite(value) else float(default)
+        return LightingConfig.doubleVal(key, default)
     except Exception:
         return float(default)
 
 
 def _settingsStr(key: str, default: str) -> str:
+    """PRC-first string knob (see LightingConfig)."""
     try:
-        v = _getSettingValue(key, default)
-        return str(v) if v is not None else default
+        return LightingConfig.stringVal(key, default)
     except Exception:
         return default
 
 
 def _wantDayNight() -> bool:
-    try:
-        val = _getSettingValue('want-day-night-cycle', None)
-        if val is not None:
-            return _coerceBool(val, True)
-    except Exception:
-        pass
-    return ConfigVariableBool('want-day-night-cycle', True).value
+    return LightingConfig.boolVal('want-day-night-cycle', True)
 
 
 
@@ -3387,6 +3573,183 @@ def _celestialTowardDirFromHpr(hpr: tuple[float, float, float]) -> Vec3:
     except Exception:
         direction = Vec3(0, -0.707, 0.707)
     return direction
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Physical atmosphere model (shared with the procedural sky shader)
+# ─────────────────────────────────────────────────────────────────────────────
+# The sky dome, its clouds, and the scene's light rig must all agree on the
+# colour of sunlight.  The sky shader computes Rayleigh + Mie extinction along
+# the sun's path (see toontown/shaders/sky.frag.glsl); these helpers reproduce
+# that model in Python so the directional key light, ambient skylight, water
+# sun glint and fog all warm/cool in lock-step with the rendered sky instead of
+# drifting from hardcoded profile colors.
+#
+# The coefficients below MUST stay in sync with sky.frag.glsl.
+
+
+def _physRayleighBeta() -> tuple[float, float, float]:
+    """Relative Rayleigh extinction coefficients (R, G, B)."""
+    return (0.145, 0.380, 0.950)
+
+
+def _physMieBeta(turbidity: float) -> tuple[float, float, float]:
+    """Relative Mie extinction coefficients — spectrally flat, scaled by turbidity."""
+    m = 0.045 * max(0.1, float(turbidity))
+    return (m, m, m)
+
+
+def _physAirMass(sinElev: float) -> float:
+    """Airmass along the sun's path; mirrors the sky shader's formula."""
+    try:
+        s = float(sinElev)
+        return 1.0 / max(0.028, s + 0.085 * math.exp(-max(0.0, s) * 4.0))
+    except Exception:
+        return 1.0
+
+
+def _physSunTrans(sinElev: float, turbidity: float, nightFactor: float = 0.0) -> tuple[float, float, float]:
+    """Direct-sunlight transmittance (RGB) after Rayleigh + Mie extinction."""
+    try:
+        air = min(_physAirMass(sinElev), 25.0)
+        br = _physRayleighBeta()
+        bm = _physMieBeta(turbidity)
+        w = max(0.0, 1.0 - _clamp(float(nightFactor), 0.0, 1.0))
+        return (
+            math.exp(-(br[0] * 0.65 + bm[0] * 0.25) * air * w),
+            math.exp(-(br[1] * 0.65 + bm[1] * 0.25) * air * w),
+            math.exp(-(br[2] * 0.65 + bm[2] * 0.25) * air * w),
+        )
+    except Exception:
+        return (1.0, 1.0, 1.0)
+
+
+def _physSunColorMul(sinElev: float, turbidity: float, nightFactor: float = 0.0) -> tuple[float, float, float]:
+    """Per-channel multiplier applied to the profile sun colour.
+
+    Returns (1, 1, 1) at zenith (airmass ~1) so an authored profile keeps its
+    colour at high sun, then warms toward deep orange/red as the sun drops —
+    exactly the Rayleigh extinction the sky shader renders around the disc.
+    Two envelopes fade the effect out where it would fight the art:
+      • heavy turbidity (overcast / fog / smog) scatters the direct beam into
+        diffuse white light, so the reddening relaxes;
+      • night fades back to neutral so the authored moon key survives.
+    """
+    try:
+        night = _clamp(float(nightFactor), 0.0, 1.0)
+        if night >= 0.999:
+            return (1.0, 1.0, 1.0)
+        s = max(float(sinElev), 0.02)
+        trans = _physSunTrans(s, turbidity, 0.0)
+        zenith = _physSunTrans(1.0, turbidity, 0.0)
+        mul = (
+            max(0.02, trans[0] / max(zenith[0], 1e-5)),
+            max(0.02, trans[1] / max(zenith[1], 1e-5)),
+            max(0.02, trans[2] / max(zenith[2], 1e-5)),
+        )
+        # Mie-dominated (turbid) atmosphere -> diffuse white, less reddening.
+        diffuse = _clamp((float(turbidity) - 3.5) / 4.5, 0.0, 1.0)
+        w1 = 1.0 - diffuse * 0.9
+        mul = (1.0 + (mul[0] - 1.0) * w1, 1.0 + (mul[1] - 1.0) * w1, 1.0 + (mul[2] - 1.0) * w1)
+        # Fade toward neutral as night sets in.
+        w2 = 1.0 - night
+        return (1.0 + (mul[0] - 1.0) * w2, 1.0 + (mul[1] - 1.0) * w2, 1.0 + (mul[2] - 1.0) * w2)
+    except Exception:
+        return (1.0, 1.0, 1.0)
+
+
+def _physSinElev(hpr) -> float:
+    """Sine of the celestial body's elevation from an unclamped profile HPR."""
+    try:
+        return float(_celestialTowardDirFromHpr(hpr).z)
+    except Exception:
+        return 0.5
+
+
+def _physAtmosphereEnabled() -> bool:
+    """Master switch: sync scene lighting with the procedural sky's scattering."""
+    return _settingsBool('lighting-physical-atmosphere', True)
+
+
+def _physSunBlend() -> float:
+    """0..1 — how strongly physical extinction tints the scene sun colour."""
+    return _clamp(_settingsFloat('lighting-physical-sun-blend', 0.85), 0.0, 1.0)
+
+
+def _physSkyAmbientBlend() -> float:
+    """0..1 — how much indirect scene light borrows the sky's own colour."""
+    return _clamp(_settingsFloat('lighting-sky-ambient-blend', 0.35), 0.0, 1.0)
+
+
+def _physFogMatch() -> float:
+    """0..1 — how tightly the sky's horizon locks to the scene fog colour."""
+    return _clamp(_settingsFloat('lighting-sky-fog-match', 0.70), 0.0, 1.0)
+
+
+def _physSkyAmbient(spec: dict, nightFactor: float) -> tuple[float, float, float, float]:
+    """Average sky colour (zenith <-> horizon) used to tint indirect light."""
+    try:
+        zc = spec.get('skyZenithColor') or spec.get('clearColor') or (0.2, 0.45, 0.8)
+        hc = spec.get('clearColor') or zc
+        avg = (
+            float(zc[0]) * 0.45 + float(hc[0]) * 0.55,
+            float(zc[1]) * 0.45 + float(hc[1]) * 0.55,
+            float(zc[2]) * 0.45 + float(hc[2]) * 0.55,
+        )
+        k = max(0.0, 1.0 - _clamp(float(nightFactor), 0.0, 1.0) * 0.92)
+        return (avg[0] * k, avg[1] * k, avg[2] * k, 1.0)
+    except Exception:
+        return (0.25, 0.30, 0.45, 1.0)
+
+
+def _physFogDensity(spec: dict) -> float:
+    """0..~1.4 fog density derived from the profile's fog parameters.
+
+    Used by the sky shader so heavy-fog zones (DD, The Brrrgh, cog HQ smog)
+    push aerial perspective into the sky and clouds, while clear zones stay
+    crisp.
+    """
+    try:
+        exp = spec.get('fogExponent')
+        if exp is not None:
+            return _clamp(float(exp) * 130.0, 0.0, 1.4)
+        near_v = float(spec.get('fogNear') or 60.0)
+        far_v = float(spec.get('fogFar') or 500.0)
+        return _clamp(190.0 / max(1.0, far_v - near_v), 0.0, 1.2)
+    except Exception:
+        return 0.4
+
+
+def _skySunAngularRadius() -> float:
+    """Angular radius (radians) of the procedural sun disc.
+
+    Base 0.006 rad is a subtly stylised ~0.7 degree sun; the ``sky-sun-size``
+    setting scales it (0.5x .. 4x) so the disc, its glow and the godrays all
+    agree on how big the sun is.
+    """
+    mult = _clamp(_settingsFloat('sky-sun-size', 2.0), 0.5, 4.0)
+    return 0.006 * mult
+
+
+def _godRaySunSize(lens=None) -> float:
+    """Projected screen-space sun disc radius (fraction of viewport height).
+
+    The god-rays overlay draws its glow anchored to the same angular size the
+    sky shader renders, so the shafts visibly emanate from the disc.
+    """
+    try:
+        rad = _skySunAngularRadius()
+        if lens is None:
+            cameraNp = getattr(base, 'cam', None) or getattr(base, 'camera', None)
+            if cameraNp is None or cameraNp.isEmpty():
+                return 0.012
+            lens = cameraNp.node().getLens()
+        if lens is None:
+            return 0.012
+        fovY = float(lens.getFov()[1])
+        return math.tan(rad) / max(0.01, math.tan(math.radians(fovY) * 0.5))
+    except Exception:
+        return 0.012
 
 
 def _scaledShadowRes(spec: dict) -> int:
@@ -4086,6 +4449,14 @@ def _disableLampLights(teardown: bool = False) -> None:
                 pass
         _lampLightsActive = False
         _activeLampSignature = ()
+        _lampShadowWanted = False
+        for entry in _lampShadowRig:
+            try:
+                cam = entry.get('cam')
+                if cam is not None and not cam.isEmpty():
+                    cam.hide()
+            except Exception:
+                pass
         return
 
     for plNp in _lampLights:
@@ -4113,6 +4484,200 @@ def _disableLampLights(teardown: bool = False) -> None:
     _lampPoolNps.clear()
     _lampLightsActive = False
     _activeLampSignature = ()
+    _destroyLampShadowBuffers()
+    _lampShadowWanted = False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Point-light (lamp) shadows
+# ─────────────────────────────────────────────────────────────────────────────
+# Each virtualized lamp slot owns one small persistent depth buffer (indexed
+# identically to osl_LampPosWorld{i}).  The receiver shader samples it with the
+# same Gaussian PCF used for the sun, so toons and buildings cast visible
+# shadows inside every lit lamp pool.  Buffers are allocated once per process
+# so a fresh FBO never races a live one in the /Draw thread on this Panda build.
+
+
+def _lampShadowCasterShaderLoad() -> Shader | None:
+    global _lampShadowCasterShader
+    if _lampShadowCasterShader is not None:
+        return _lampShadowCasterShader
+    try:
+        shader = Shader.load(
+            Shader.SL_GLSL,
+            Filename.fromOsSpecific(_WORLD_SHADOW_CASTER_VERT),
+            Filename.fromOsSpecific(_WORLD_SHADOW_CASTER_FRAG),
+        )
+        if shader is not None:
+            _lampShadowCasterShader = shader
+        return shader
+    except Exception as error:
+        _dbg(f'lamp-shadow caster shader unavailable: {error!r}')
+        return None
+
+
+def _destroyLampShadowBuffers() -> None:
+    global _lampShadowRig, _lampShadowInitPending
+    _lampShadowInitPending = False
+    try:
+        taskMgr.remove('outdoorLampShadowBuffersInit')
+    except Exception:
+        pass
+    for entry in _lampShadowRig:
+        try:
+            cam = entry.get('cam')
+            if cam is not None and not cam.isEmpty():
+                cam.removeNode()
+        except Exception:
+            pass
+        try:
+            buf = entry.get('buf')
+            if buf is not None:
+                base.graphicsEngine.removeWindow(buf)
+        except Exception:
+            pass
+    _lampShadowRig = []
+    _lampShadowMatrix = []
+
+
+def _createLampShadowBuffersNow(task=None):
+    """Actually allocate the persistent per-lamp depth buffers."""
+    global _lampShadowRig, _lampShadowRes, _lampShadowMatrix, _lampShadowInitPending
+    _lampShadowInitPending = False
+    if _lampShadowRig:
+        return task.done if task is not None else None
+    if not (getattr(base, 'win', None) and getattr(base, 'pipe', None)
+            and hasattr(base, 'graphicsEngine')):
+        return task.done if task is not None else None
+    shader = _lampShadowCasterShaderLoad()
+    if shader is None:
+        return task.done if task is not None else None
+    try:
+        res = _lampShadowRes
+        for idx in range(_MAX_SHADER_LAMP_LIGHTS):
+            try:
+                fb = FrameBufferProperties()
+                fb.setRgbColor(False)
+                fb.setDepthBits(24)
+                props = WindowProperties.size(res, res)
+                flags = GraphicsPipe.BFRefuseWindow
+                buffer = base.graphicsEngine.makeOutput(
+                    base.pipe, f'outdoorLampShadowBuffer{idx}', -100, fb, props,
+                    flags, base.win.getGsg(), base.win)
+                if buffer is None:
+                    continue
+                depth = Texture(f'outdoorLampShadowDepth{idx}')
+                depth.setFormat(Texture.FDepthComponent)
+                depth.setWrapU(Texture.WMClamp)
+                depth.setWrapV(Texture.WMClamp)
+                depth.setMinfilter(Texture.FTLinear)
+                depth.setMagfilter(Texture.FTLinear)
+                buffer.addRenderTexture(depth, GraphicsOutput.RTMBindOrCopy,
+                                        GraphicsOutput.RTPDepth)
+                buffer.setClearDepthActive(True)
+                buffer.setClearDepth(1.0)
+
+                lens = PerspectiveLens()
+                lens.setFov(_lampShadowFov, _lampShadowFov)
+                lens.setNearFar(0.05, _lampShadowReach)
+                camera = base.makeCamera(buffer, lens=lens, scene=base.render,
+                                         camName=f'outdoorLampShadowCam{idx}')
+                camera.wrtReparentTo(base.render)
+                camera.node().setCameraMask(_SHADOW_CAM_MASK)
+                initial = RenderState.make(
+                    ShaderAttrib.make(shader),
+                    ColorWriteAttrib.make(ColorWriteAttrib.COff),
+                )
+                initial = initial.addAttrib(
+                    CullFaceAttrib.make(CullFaceAttrib.MCullNone), 100)
+                camera.node().setInitialState(initial)
+                # Hidden until the lamp is actually positioned/on, so an
+                # uninitialised buffer never contributes to the frame.
+                camera.hide()
+                _lampShadowRig.append({
+                    'buf': buffer, 'cam': camera, 'tex': depth, 'res': res,
+                })
+            except Exception as error:
+                _dbg(f'lamp shadow buffer {idx} creation failed: {error!r}')
+        _lampShadowMatrix = [None] * _MAX_SHADER_LAMP_LIGHTS
+    except Exception as error:
+        _dbg(f'lamp shadow buffer setup failed: {error!r}')
+        _destroyLampShadowBuffers()
+    return task.done if task is not None else None
+
+
+def _ensureLampShadowBuffers() -> None:
+    """Request the persistent per-lamp depth buffers (idempotent + deferred).
+
+    Mirroring the sun shadow caster, FBO allocation is deferred off the current
+    frame so a fresh lamp shadow buffer never races another live buffer (zone
+    teardown, the sun caster, water reflections) in the /Draw thread.  Cameras
+    stay hidden until the delayed pass has run.
+    """
+    global _lampShadowInitPending
+    if _lampShadowRig:
+        return
+    if _lampShadowInitPending:
+        return
+    if not (getattr(base, 'win', None) and getattr(base, 'pipe', None)
+            and hasattr(base, 'graphicsEngine')):
+        return
+    _lampShadowInitPending = True
+    try:
+        taskMgr.doMethodLater(1.0, _createLampShadowBuffersNow,
+                              'outdoorLampShadowBuffersInit')
+    except Exception:
+        _lampShadowInitPending = False
+        _createLampShadowBuffersNow()
+
+
+def _aimLampShadowCamera(cam: NodePath, lampPos: Vec3, groundPos: Vec3) -> None:
+    """Point one lamp's perspective shadow camera from the lamp toward its pool."""
+    if cam is None or cam.isEmpty():
+        return
+    try:
+        cam.setPos(base.render, lampPos)
+        # Aim at the ground point below the fixture so the pool floor and the
+        # things standing on it fall inside the near/bounded perspective cone.
+        cam.lookAt(base.render, groundPos)
+    except Exception:
+        pass
+
+
+def _syncLampShadowCameras(lampPositions: list, lampGrounds: list, active: bool) -> None:
+    """Reposition lamp shadow cameras to follow their current lamp slots."""
+    global _lampShadowWanted
+    _ensureLampShadowBuffers()
+    _lampShadowWanted = bool(active and _lampShadowRig)
+    if not _lampShadowWanted:
+        for entry in _lampShadowRig:
+            try:
+                cam = entry.get('cam')
+                if cam is not None and not cam.isEmpty():
+                    cam.hide()
+            except Exception:
+                pass
+        return
+    for idx, entry in enumerate(_lampShadowRig):
+        try:
+            cam = entry.get('cam')
+            pos = Vec3(0, 0, 100000)
+            ground = Vec3(0, 0, 0)
+            if idx < len(lampPositions):
+                pos = lampPositions[idx]
+            if idx < len(lampGrounds):
+                ground = lampGrounds[idx]
+            # Light is out of range / disabled: keep the camera hidden so the
+            # stale buffer contents cannot darken an unrelated area.
+            if pos.z > 50000.0 or not active:
+                if cam is not None and not cam.isEmpty():
+                    cam.hide()
+                continue
+            if cam is not None and not cam.isEmpty():
+                cam.show()
+                _aimLampShadowCamera(cam, pos, ground)
+        except Exception:
+            pass
 
 
 def _nightFactor(hour: float | None = None) -> float:
@@ -4219,6 +4784,30 @@ def _syncLampLights(force: bool = False) -> None:
         except Exception:
             pass
     _lampLightsActive = True
+
+    # Reposition the per-lamp point-light shadow cameras so toons/buildings
+    # cast soft shadows inside each active lamp pool.
+    lampPositions = []
+    lampGrounds = []
+    for idx, plNp in enumerate(_lampLights):
+        if idx >= _MAX_SHADER_LAMP_LIGHTS:
+            break
+        try:
+            pos = plNp.getPos(base.render)
+            c = plNp.node().getColor()
+            if c.x + c.y + c.z <= 0.01:
+                pos = Vec3(0, 0, 100000)
+        except Exception:
+            pos = Vec3(0, 0, 100000)
+        lampPositions.append(pos)
+        try:
+            if idx < len(_lampGeomNps):
+                lampGrounds.append(_lampGroundPosition(_lampGeomNps[idx]))
+            else:
+                lampGrounds.append(_lampGroundPosition(plNp))
+        except Exception:
+            lampGrounds.append(pos)
+    _syncLampShadowCameras(lampPositions, lampGrounds, wantsLamps and strength > 0.0)
     _lampRefreshAccum = 0.0
     # Lamp NodePaths may have just been created or replaced.  Refresh the
     # root-level night LightAttrib so the current virtualized PointLights are
@@ -4250,18 +4839,28 @@ def _syncTimeOfDayFromSettings() -> None:
 
 def _evalKeyframes(zone: str, hour: float) -> dict:
     frames = _DAY_NIGHT_KEYFRAMES.get(zone)
+    fade_zone = zone
     if not frames:
         base_zone = zone.replace('_street', '')
         frames = _DAY_NIGHT_KEYFRAMES.get(base_zone)
+        fade_zone = base_zone
     if not frames:
         if zone in ('estate', 'playground', 'golf_course'):
             frames = _DAY_NIGHT_KEYFRAMES.get('tt')
+            fade_zone = 'tt'
     if not frames:
-        return {}
+        return dict()
     hour   = hour % 24.0
     valid  = [(h, d) for h, d in frames if d is not None]
     if not valid:
-        return {}
+        return dict()
+    # The zone's authored base profile provides a sensible ``far`` endpoint for
+    # any parameter that is only authored at one of the two adjacent keyframes.
+    # Interpolating toward it (instead of snapping on None) removes the visibly
+    # abrupt pop that sparse frames otherwise caused at dusk/dawn for cloud
+    # coverage, ray intensity, sky tint, and fog colour.  Only values the zone
+    # actually defined are used, so nothing new is invented for other zones.
+    base = _ZONE_PROFILES.get(fade_zone, {})
     if len(valid) == 1:
         return dict(valid[0][1])
 
@@ -4288,6 +4887,12 @@ def _evalKeyframes(zone: str, hour: float) -> dict:
     for key in all_keys:
         av = prev_d.get(key)
         bv = next_d.get(key)
+        # Author a frame side from the zone base profile when the keyframe omits
+        # it, so intermediate blends travel along the zone's own authored colour.
+        if av is None and key in base:
+            av = base[key]
+        if bv is None and key in base:
+            bv = base[key]
         if isinstance(av, bool) or isinstance(bv, bool):
             result[key] = bv if linear_t >= 0.5 else av
         elif isinstance(av, (int, float)) and isinstance(bv, (int, float)):
@@ -4722,7 +5327,7 @@ def _enableShadowCaster(spec: dict, task=None):
         # much it looks like blocky square lighting.  Do NOT enable it just
         # because lighting-debug is on.
         try:
-            if ConfigVariableBool('lighting-shadow-force-huge-frustum', False).value:
+            if LightingConfig.boolVal('lighting-shadow-force-huge-frustum', False):
                 if _worldShadowCameraNp is not None:
                     lens = _worldShadowCameraNp.node().getLens()
                     lens.setFilmSize(max(2000.0, float(area)), max(2000.0, float(area)))
@@ -4814,6 +5419,20 @@ def _spawnLightRig(spec: dict, geom=None,
         # Lower indirect light while increasing the direct sun below.  This
         # produces a brighter day without flattening away contact shadows.
         rawAmb   = _applyColorTemp(_scaleColor(spec['ambient'], intensity * 0.72 * indirectScale))
+        # Borrow the sky's own colour (zenith<->horizon) for indirect light so
+        # shadowed areas are tinted by the same atmosphere the sky renders.
+        if _physAtmosphereEnabled() and _physSkyAmbientBlend() > 0.0:
+            try:
+                sa = _physSkyAmbient(spec, night)
+                b  = _physSkyAmbientBlend()
+                rawAmb = (
+                    rawAmb[0] * (1.0 - b) + sa[0] * b,
+                    rawAmb[1] * (1.0 - b) + sa[1] * b,
+                    rawAmb[2] * (1.0 - b) + sa[2] * b,
+                    rawAmb[3],
+                )
+            except Exception:
+                pass
         ambColor = (
             max(rawAmb[0], floor * 0.58),
             max(rawAmb[1], floor * 0.52),
@@ -4840,6 +5459,22 @@ def _spawnLightRig(spec: dict, geom=None,
         return
     keyGain       = _lerpF(0.92, 0.78, night)
     keyColor      = _applyColorTemp(_scaleColor(spec['key'], intensity * keyGain * directScale))
+    # Rayleigh + Mie extinction warms the key light as the sun drops, so the
+    # ground is lit by the same sunlight the sky shader draws around the disc.
+    if _physAtmosphereEnabled() and _physSunBlend() > 0.0:
+        try:
+            turb = float(spec.get('turbidity', 2.0))
+            sinElev = _physSinElev(spec.get('keyHpr', (135, -42, 0)))
+            mul = _physSunColorMul(sinElev, turb, night)
+            b   = _physSunBlend()
+            keyColor = (
+                keyColor[0] * (1.0 + (mul[0] - 1.0) * b),
+                keyColor[1] * (1.0 + (mul[1] - 1.0) * b),
+                keyColor[2] * (1.0 + (mul[2] - 1.0) * b),
+                keyColor[3],
+            )
+        except Exception:
+            pass
     key           = DirectionalLight('outdoorKey')
     key.setColor(Vec4(*keyColor))
     casterSpec = _ZONE_PROFILES.get(_activeStyle, spec)
@@ -4976,6 +5611,16 @@ def _applyProfileLive(spec: dict) -> None:
         if name == 'outdoorAmbient':
             raw = _applyColorTemp(_scaleColor(
                 spec.get('ambient', (0.2, 0.2, 0.3, 1)), intensity * 0.72 * indirectScale))
+            if _physAtmosphereEnabled() and _physSkyAmbientBlend() > 0.0:
+                try:
+                    sa = _physSkyAmbient(spec, night)
+                    b  = _physSkyAmbientBlend()
+                    raw = (raw[0] * (1.0 - b) + sa[0] * b,
+                           raw[1] * (1.0 - b) + sa[1] * b,
+                           raw[2] * (1.0 - b) + sa[2] * b,
+                           raw[3])
+                except Exception:
+                    pass
             c   = (max(raw[0], floor * 0.58), max(raw[1], floor * 0.52),
                    max(raw[2], floor * 0.64), raw[3])
             node.setColor(Vec4(*c))
@@ -4984,8 +5629,19 @@ def _applyProfileLive(spec: dict) -> None:
             keyGain = _lerpF(0.92, 0.78, night)
             c = _applyColorTemp(_scaleColor(
                 spec.get('key', (1, 1, 1, 1)), intensity * keyGain * directScale))
-            node.setColor(Vec4(*c))
             kh, kp, kr = spec.get('keyHpr', (0, -45, 0))
+            if _physAtmosphereEnabled() and _physSunBlend() > 0.0:
+                try:
+                    turb = float(spec.get('turbidity', 2.0))
+                    mul = _physSunColorMul(_physSinElev((kh, kp, kr)), turb, night)
+                    b   = _physSunBlend()
+                    c = (c[0] * (1.0 + (mul[0] - 1.0) * b),
+                         c[1] * (1.0 + (mul[1] - 1.0) * b),
+                         c[2] * (1.0 + (mul[2] - 1.0) * b),
+                         c[3])
+                except Exception:
+                    pass
+            node.setColor(Vec4(*c))
             np.setHpr(kh, kp, kr)
             _sunDirWorld = _sunDirFromHpr((kh, kp, kr))
             try:
@@ -5591,6 +6247,14 @@ def _createGodRaysOverlay(spec: dict) -> None:
         except Exception:
             ar = 1.333
         card.setShaderInput('aspectRatio', ar)
+        try:
+            card.setShaderInput('fogDensity', _physFogDensity(spec))
+        except Exception:
+            pass
+        try:
+            card.setShaderInput('sunSize', _godRaySunSize())
+        except Exception:
+            pass
         _godRaysCard = card
         _updateGodRaysLive(spec)
     except Exception:
@@ -5638,6 +6302,14 @@ def _updateGodRaysLive(spec: dict) -> None:
             props = base.win.getProperties()
             _godRaysCard.setShaderInput(
                 'aspectRatio', float(props.getXSize()) / max(1.0, float(props.getYSize())))
+        except Exception:
+            pass
+        try:
+            _godRaysCard.setShaderInput('fogDensity', _physFogDensity(spec))
+        except Exception:
+            pass
+        try:
+            _godRaysCard.setShaderInput('sunSize', _godRaySunSize(lens))
         except Exception:
             pass
         rayColor = tuple(spec.get('rayColor') or (1, 1, 1, 1))
@@ -6030,6 +6702,20 @@ def _tickWaterUniforms(dt: float) -> None:
     rawSunColor = _applyColorTemp(_scaleColor(
         spec.get('key') or (1.0, 0.95, 0.80, 1.0),
         _lerpF(1.0, 0.24, night)))
+    # Match the water sun glint to the physically-extincted key light colour.
+    if _physAtmosphereEnabled() and _physSunBlend() > 0.0:
+        try:
+            turb = float(spec.get('turbidity', 2.0))
+            mul = _physSunColorMul(_physSinElev(spec.get('keyHpr', (135, -42, 0))), turb, night)
+            b   = _physSunBlend()
+            rawSunColor = (
+                rawSunColor[0] * (1.0 + (mul[0] - 1.0) * b),
+                rawSunColor[1] * (1.0 + (mul[1] - 1.0) * b),
+                rawSunColor[2] * (1.0 + (mul[2] - 1.0) * b),
+                rawSunColor[3],
+            )
+        except Exception:
+            pass
     skyColor = spec.get('clearColor') or spec.get('fogColor') or (0.25, 0.45, 0.75, 1.0)
     for ws in _waterSetups:
         np = ws.get('np')
@@ -6531,6 +7217,21 @@ def _updateWorldShadowShaderInputs(spec: dict | None = None) -> None:
     root.setShaderInput('osl_PointShadowOn', pointShadowsOn)
     base.render.setShaderInput('osl_PointShadowOn', pointShadowsOn)
 
+    # Shared lamp-shadow tuning.  All buffers share one resolution so a single
+    # texel/softness/bias set drives every per-lamp PCF sample.
+    lampShadowBaseRes = _lampShadowRig[0]['res'] if _lampShadowRig else _lampShadowRes
+    lampShadowTexel = Vec2(1.0 / max(1, lampShadowBaseRes), 1.0 / max(1, lampShadowBaseRes))
+    lampShadowSoftness = _clamp(_settingsFloat('lighting-pointlight-shadow-softness', 1.0), 0.6, 2.0) * 0.85
+    lampShadowBias = 0.00090
+    lampShadowEnabled = (pointShadowsOn > 0.5 and _lampShadowRig
+                         and _wantWorldShadows() and _wantFx())
+    root.setShaderInput('osl_LampShadowTexel', lampShadowTexel)
+    base.render.setShaderInput('osl_LampShadowTexel', lampShadowTexel)
+    root.setShaderInput('osl_LampShadowSoftness', lampShadowSoftness)
+    base.render.setShaderInput('osl_LampShadowSoftness', lampShadowSoftness)
+    root.setShaderInput('osl_LampShadowBias', lampShadowBias)
+    base.render.setShaderInput('osl_LampShadowBias', lampShadowBias)
+
     for idx in range(_MAX_SHADER_LAMP_LIGHTS):
         pos = Vec3(0, 0, 100000)
         groundPos = Vec3(0, 0, 100000)
@@ -6556,6 +7257,40 @@ def _updateWorldShadowShaderInputs(spec: dict | None = None) -> None:
         base.render.setShaderInput(f'osl_LampPosWorld{idx}', pos)
         base.render.setShaderInput(f'osl_LampGroundPos{idx}', groundPos)
         base.render.setShaderInput(f'osl_LampColor{idx}', color)
+
+        # Compose each lamp's shadow matrix + sample state.
+        lampShadowMatrix = LMatrix4.identMat()
+        lampShadowOn = 0.0
+        lampShadowTex = _getWorldShadowWhiteTexture()
+        if (lampShadowEnabled and idx < len(_lampShadowRig)
+                and idx < len(_lampLights)
+                and color.x + color.y + color.z > 0.01):
+            entry = _lampShadowRig[idx]
+            cam = entry.get('cam')
+            buf = entry.get('buf')
+            if (cam is not None and not cam.isEmpty()
+                    and buf is not None and entry.get('tex') is not None
+                    and (pos.z < 50000.0)):
+                try:
+                    lens = cam.node().getLens()
+                    projection = LMatrix4(lens.getProjectionMat())
+                    worldToCam = LMatrix4(base.render.getMat(cam))
+                    lampShadowMatrix = worldToCam * projection
+                    lampShadowTex = entry['tex']
+                    # Fade in so shadows appear smoothly as lamps brighten at
+                    # dusk instead of snapping on.  The light color already
+                    # carries the lamp strength scale, so its peak channel is a
+                    # reliable proxy for how much shadow the lamp should cast.
+                    lampStrengthFade = _clamp(max(color.x, max(color.y, color.z)), 0.0, 1.0)
+                    lampShadowOn = lampStrengthFade
+                except Exception:
+                    lampShadowOn = 0.0
+        root.setShaderInput(_LAMP_SHADOW_MATRIX_UNIFORMS[idx], lampShadowMatrix)
+        root.setShaderInput(_LAMP_SHADOW_MAP_UNIFORMS[idx], lampShadowTex)
+        root.setShaderInput(_LAMP_SHADOW_ON_UNIFORMS[idx], lampShadowOn)
+        base.render.setShaderInput(_LAMP_SHADOW_MATRIX_UNIFORMS[idx], lampShadowMatrix)
+        base.render.setShaderInput(_LAMP_SHADOW_MAP_UNIFORMS[idx], lampShadowTex)
+        base.render.setShaderInput(_LAMP_SHADOW_ON_UNIFORMS[idx], lampShadowOn)
 
     shadowOn = 0.0
     shadowTex = _getWorldShadowWhiteTexture()

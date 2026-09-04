@@ -64,6 +64,7 @@ from ..shtiker.ShtikerPage import ShtikerPage
 
 WantNewsPage = base.config.GetBool('want-news-page', ToontownGlobals.DefaultWantNewsPageSetting)
 from toontown.toontowngui import NewsPageButtonManager
+from toontown.toontowngui.UIArrangeManager import getUIArrangeManager
 if WantNewsPage:
     from toontown.shtiker import NewsPage
 AdjustmentForNewsButton = -0.275
@@ -81,6 +82,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
             self.LocalToon_initialized
         except:
             self.LocalToon_initialized = 1
+            self.uiArrangeManager = getUIArrangeManager()
             self.neverSleep = False
             self.numFlowers = 0
             self.maxFlowerBasket = 0
@@ -103,6 +105,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
                 newScale = oldScale * ToontownGlobals.NewsPageScaleAdjust
             self.bFriendsList = DirectButton(image=(friendsButtonNormal, friendsButtonPressed, friendsButtonRollover), relief=None, pos=(-0.141, 0, -0.125), parent=base.a2dTopRight, scale=newScale, text=('', TTLocalizer.FriendsListLabel, TTLocalizer.FriendsListLabel), text_scale=0.09, text_fg=Vec4(1, 1, 1, 1), text_shadow=Vec4(0, 0, 0, 1), text_pos=(0, -0.18), text_font=ToontownGlobals.getInterfaceFont(), sortOrder=100, command=self.sendFriendsListEvent)
             self.bFriendsList.hide()
+            self.uiArrangeManager.registerUnit('friends', self.bFriendsList, 'ui-friends-pos', [self.bFriendsList])
             self.friendsListButtonActive = 0
             self.friendsListButtonObscured = 0
             self.moveFurnitureButtonObscured = 0
@@ -407,6 +410,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         else:
             self.laffMeter.setPos(0.133, 0.0, 0.13)
         self.laffMeter.stop()
+        self.uiArrangeManager.registerUnit('laff', self.laffMeter, 'ui-laff-pos', [self.laffMeter])
         self.questMap = QuestMap.QuestMap(self)
         self.questMap.stop()
         if not base.cr.isPaid():
