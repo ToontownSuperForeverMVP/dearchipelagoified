@@ -1,7 +1,8 @@
 # TTAP: Spicy Birthday Cake
 a fork of toontown archipelago aiming to bring QOL+ features past what TTAP offers to further enhance the experience of the game
 
-this fork also acts as a nightly version of TTAP itself, as some changes go here before they end upstream
+# this fork is no longer actively maintained.
+i have quit maintaining this fork on github, and future commits will be private for an indefinite time, but this repository will be kept up in case anyone wants to use this for other toontown projects!
 
 as of now, this fork currently contains the following features;
 - BK warnings in case player is close to or out of locations left in logic, a warning will show, along with a recommended hint based on where the game will most open up from
@@ -11,12 +12,6 @@ as of now, this fork currently contains the following features;
 - slightly modified panda3d to better support such system above, with the shadows off you will see a slightly higher framerate than in vanilla TTAP, in my case it is a ~5% improvement
 - smoother orbital camera and some camera cutscene optimizations
 - added a skip cutscene button to the geyser in acorn acres, to make the "ride the geyser" check quicker
-
-this fork is in a heavy work-in-progress as more features get added to it over time, i'll share progress here whenever i can
-
-i'm also willing to accept any suggestions you make, just ensure its not about apworld logic or anything that requires drawn textures (cannot draw for the sake of me, but i can code it using GLSL!), anything else goes!
-
-AI disclosure - this project uses AI tools to manage the github and other git-related management, but doesn't touch code; everything is done by me!
 
 ---------------------------------------------------------------------------------------------------------------------------------
 
